@@ -32,13 +32,17 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"youtube/codes/core"
 )
 
 var listFileNamePath string = "list.txt"
+var listHTMLpagePath = "yyoutube-playlist-video-html.txt"
 var downloadRootDir = "./files"
 
 const (
+	youtubeURL     = "https://youtube.com"
+	youtubeURLFull = "https://www.youtube.com/"
 	listHTMLFolder = "listHtmlFolder"
 	typeMusic      = "mp3"
 	typeVideo      = "video"
@@ -127,10 +131,10 @@ func (v *video) getMp3() {
 		fmt.Println("get mp3")
 
 		var fullName = v.getFullName()
-		//var fullName = "/Users/pavelfilipcik/work/codesgo/youtube/Zwei.mp4"
+		//var fullName = "/Users/pf/work/codesgo/youtube/Zwei.mp4"
 
 		if !core.FileExists(fullName) {
-			v.setError("Vytvoreni mp3 souboru selhalo: neexistuje soubor videa, ze ktereho se vytvori mp3.", nil)
+			v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
 		}
 
 		if !core.FileExists(v.getFullMp3Name()) {
@@ -144,37 +148,37 @@ func (v *video) getMp3() {
 				//.webm
 				quality = "160k"
 			} else {
-				v.setError("Vytvoreni mp3 souboru selhalo: neexistuje command pro konverzi.", nil)
+				v.setError("Create of mp3 file failed: missing part for quality of result mp3, definition of index", nil)
 				return
 			}
 
-			isCreated := createMp3(quality, fullName, v.videoName)
+			errCreateMp3 := createMp3(quality, fullName, v.videoName)
 
-			if isCreated == false {
-				v.setError("Vytvoreni mp3 souboru selhalo: konverze s ffmpeg.", nil)
+			if errCreateMp3 != nil {
+				v.setError("Create of mp3 file failed: ffmpeg convert.", errCreateMp3)
 			}
 		}
 	}
 }
 
-func createMp3(quality string, fullName string, videoName string) bool {
+func createMp3(quality string, fullName string, videoName string) error {
 
 	cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-acodec", "mp3", "-ab", quality, "-ar", "44100", "-ac", "2", "-map", "a", videoName+".mp3")
 	out, errCO := cmd.CombinedOutput()
 
 	if errCO != nil {
-		core.LogError(errCO, "cmd.Run() failed for ffmpeg 22")
+		return errCO
 	}
-
-	outp := string(out)
 
 	if !core.FileExists(videoName + ".mp3") {
-		fmt.Printf("------------------------------- AAJJAJAJAJAJ Neco se pokazilo: %s, fullName: %s, vidoname: %s \n", quality, fullName, videoName)
-		fmt.Println(outp)
-		return false
+		outp := string(out)
+		// should not happen, maybe full disk?
+		errMsg := fmt.Sprintf("Mp3 file was not created: %s, fullName: %s, vidoname: %s \n output: %s \n", quality, fullName, videoName, outp)
+
+		return errors.New(errMsg)
 	}
 
-	return true
+	return nil
 }
 
 func (v *video) downloadVideoIndexesFiles() {
@@ -216,7 +220,7 @@ func (v *video) removeVideo() {
 		fmt.Println("mazu video: ", fullName)
 		removeErr := os.Remove(fullName)
 		if removeErr != nil {
-			v.setError("smazani videa se nepodarilo", removeErr)
+			v.setError("Delete video file failed.", removeErr)
 		}
 	}
 }
@@ -332,14 +336,13 @@ func loadVideoOptions(list []video) {
 			out, errCO := cmd.CombinedOutput()
 
 			if errCO != nil {
-				v.setError("stahovani indexu pro video selhalo", errCO)
+				v.setError("get video index failed", errCO)
 			}
 
 			bufferOutput := string(out)
 			hasAudioSource, errVideo := v.getBestQualityVideo(bufferOutput)
 
 			if errVideo != nil {
-				// todo
 				v.setError("bestquality failed with", errVideo)
 			}
 
@@ -347,7 +350,6 @@ func loadVideoOptions(list []video) {
 				errAudio := v.getBestQualityAudio(bufferOutput)
 
 				if errAudio != nil {
-					// todo
 					v.setError("audio get best quality failed with", errAudio)
 				}
 			}
@@ -355,7 +357,8 @@ func loadVideoOptions(list []video) {
 	}
 }
 
-func processVideoList(list []video) {
+func processVideoList(wg *sync.WaitGroup, list []video) {
+	defer wg.Done()
 	numberOfVideos := len(list)
 
 	// for index, v := range list {
@@ -405,7 +408,7 @@ func moveFiles(v *video) {
 		errMoveVideo := os.Rename(nameOfFile, downloadRootDir+"/"+moveToDir+"/"+nameOfFile)
 
 		if errMoveVideo != nil {
-			v.setError("presunuti souboru selhalo pro video soubor", errMoveVideo)
+			v.setError("Moving video file failed for file:", errMoveVideo)
 		}
 	}
 
@@ -421,7 +424,7 @@ func moveFiles(v *video) {
 		errMoveMp3 := os.Rename(nameOfFile, downloadRootDir+"/"+moveToDir+"/"+nameOfFile)
 
 		if errMoveMp3 != nil {
-			v.setError("presunuti souboru selhalo pro mp3 soubor", errMoveMp3)
+			v.setError("Moving mp3 file failed for file:", errMoveMp3)
 		}
 	}
 
@@ -475,7 +478,7 @@ func parseLine(line string) (v video) {
 	if len(subParts) > 0 {
 		vURL = subParts[0]
 
-		if strings.HasPrefix(vURL, "https://www.youtube.com/") == false && strings.HasPrefix(vURL, "https://youtube.com/") == false {
+		if strings.HasPrefix(vURL, youtubeURLFull) == false && strings.HasPrefix(vURL, youtubeURL) == false {
 			v.setError(fmt.Sprintf("Parsing url failed for video line: %s", vURL), nil)
 		}
 
@@ -535,7 +538,7 @@ func main() {
 		videoList, err = parseHTML(videoList)
 
 		if err != nil {
-			core.LogError(err, "Nepodarilo se parsovat html txt list.")
+			core.LogError(err, "Fail to parse html txt list.")
 			os.Exit(1)
 		}
 	}
@@ -543,7 +546,7 @@ func main() {
 	videoList, err := loadVideoList(videoList)
 
 	if err != nil {
-		core.LogError(err, "Nepodarilo se stahnout list.")
+		core.LogError(err, "Fail to load list file.")
 	}
 
 	loadVideoOptions(videoList)
@@ -554,18 +557,27 @@ func main() {
 	videoList1 := videoList[:splitPos]
 	videoList2 := videoList[splitPos:]
 
-	go processVideoList(videoList1)
-	go processVideoList(videoList2)
+	var wg sync.WaitGroup
 
-	// TODO: go routine
-	// TODO: move files to external disk
+	wg.Add(1)
+	go processVideoList(&wg, videoList1)
+	wg.Add(1)
+	go processVideoList(&wg, videoList2)
+
+	wg.Wait()
+
+	// TODO move files to external disk
 	// .      a) udelat kontrolu, jestli je dostupny
-	// c)put in git
+	// c)put in git -> gitgnore readme files
+	// settings file with folder names
+	// constants for everything
+	// czech -> english
 }
 
 func parseHTML(videoList []video) ([]video, error) {
 
-	file, errOpenFile := os.Open("yyoutube-playlist-video-html.txt")
+	file, errOpenFile := os.Open(listHTMLpagePath)
+
 	if errOpenFile != nil {
 		return nil, errOpenFile
 	}
@@ -596,7 +608,7 @@ func parseHTML(videoList []video) ([]video, error) {
 					}
 
 					substring = substring[:len(substring)-1]
-					videoURL := "https://youtube.com" + substring
+					videoURL := youtubeURL + substring
 
 					v := parseLine(videoURL + " " + typeMusic + " " + listHTMLFolder)
 

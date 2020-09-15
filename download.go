@@ -33,10 +33,11 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 	"youtube/codes/core"
 )
 
-var listFileNamePath string = "list.txt"
+var listFileNamePath = "list.txt"
 var listHTMLpagePath = "yyoutube-playlist-video-html.txt"
 var downloadRootDir = "./files"
 
@@ -49,7 +50,7 @@ const (
 	typeBoth       = "both"
 )
 
-var folders map[string]string = map[string]string{
+var folders = map[string]string{
 	typeMusic:      "mp3",   // basic type music
 	typeVideo:      "video", // basic type video
 	"vm":           "movie",
@@ -529,17 +530,21 @@ func parseLine(line string) (v video) {
 }
 
 func main() {
-	parser := true
 
 	videoList = []video{}
 
-	if parser {
+	if core.FileExists(listHTMLpagePath) {
 		var err error
 		videoList, err = parseHTML(videoList)
 
 		if err != nil {
 			core.LogError(err, "Fail to parse html txt list.")
 			os.Exit(1)
+		}
+
+		if len(videoList) > 0 {
+			fmt.Printf("Html videos loaded, count: %d", len(videoList))
+			time.Sleep(1 * time.Second)
 		}
 	}
 
@@ -567,11 +572,9 @@ func main() {
 	wg.Wait()
 
 	// TODO move files to external disk
-	// .      a) udelat kontrolu, jestli je dostupny
-	// c)put in git -> gitgnore readme files
-	// settings file with folder names
+	// git readme
+	// create settings file with folder names
 	// constants for everything
-	// czech -> english
 }
 
 func parseHTML(videoList []video) ([]video, error) {

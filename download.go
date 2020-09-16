@@ -27,8 +27,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -50,24 +52,7 @@ const (
 	typeBoth       = "both"
 )
 
-var folders = map[string]string{
-	typeMusic:      "mp3",   // basic type music
-	typeVideo:      "video", // basic type video
-	"vm":           "movie",
-	"i":            "Sadhguru",
-	"vh":           "vimhoff",
-	"s":            "spoken",
-	"now":          "now",
-	"mor":          "moravske",
-	"hou":          "house",
-	"moric":        "moric",
-	"lid":          "lidove",
-	"tech":         "techno",
-	"kouzla":       "kouzla",
-	"vtipy":        "vtipy",
-	"mh":           "mp3/house",
-	listHTMLFolder: "/fromHtml",
-}
+var folders map[string]string
 
 type ytVideoOptions struct {
 	musicIndex string
@@ -529,7 +514,26 @@ func parseLine(line string) (v video) {
 	return v
 }
 
+func loadSettings() {
+	settingsFile, err := os.Open("settings.json")
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer settingsFile.Close()
+	byteValue, _ := ioutil.ReadAll(settingsFile)
+	errUn := json.Unmarshal(byteValue, &folders)
+
+	if errUn != nil {
+		core.LogError(errUn, "error while unmarshal settings.json file")
+	}
+
+	core.PrintE(folders)
+	os.Exit(1)
+}
+
 func main() {
+
+	loadSettings()
 
 	videoList = []video{}
 

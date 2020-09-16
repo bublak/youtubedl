@@ -574,11 +574,6 @@ func main() {
 	go processVideoList(&wg, videoList2)
 
 	wg.Wait()
-
-	// TODO move files to external disk
-	// git readme
-	// create settings file with folder names
-	// constants for everything
 }
 
 func parseHTML(videoList []video) ([]video, error) {

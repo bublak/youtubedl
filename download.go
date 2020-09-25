@@ -44,6 +44,7 @@ var listHTMLpagePath = "yyoutube-playlist-video-html.txt"
 var downloadRootDir = "./files"
 
 const (
+	root           = "root"
 	youtubeURL     = "https://youtube.com"
 	youtubeURLFull = "https://www.youtube.com/"
 	listHTMLFolder = "listHtmlFolder"
@@ -504,8 +505,8 @@ func parseLine(line string) (v video) {
 			if val, ok := folders[videoFlag]; ok {
 				v.moveDir = val
 			} else {
-				core.LogError(errors.New("missing FOLDER mapping"), "no mapping for folder")
-				os.Exit(1)
+				core.LogError(errors.New("using root folder"), "missing mapping for folder flag: "+videoFlag)
+				v.moveDir = folders[root]
 			}
 		}
 
@@ -520,6 +521,7 @@ func loadSettings() {
 		fmt.Println(err)
 	}
 	defer settingsFile.Close()
+
 	byteValue, _ := ioutil.ReadAll(settingsFile)
 	errUn := json.Unmarshal(byteValue, &folders)
 
@@ -527,8 +529,17 @@ func loadSettings() {
 		core.LogError(errUn, "error while unmarshal settings.json file")
 	}
 
+	if _, ok := folders[root]; !ok {
+		core.LogError(nil, "missing mandatory 'root' declaration in folders json")
+		os.Exit(1)
+	}
+
+	for key, val := range folders {
+		folders[key] = folders[root] + "/" + val
+	}
+
 	core.PrintE(folders)
-	os.Exit(1)
+
 }
 
 func main() {

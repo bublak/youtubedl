@@ -1,10 +1,16 @@
 {
+  "root": "/Users/someUser/youtubed",
   "typeMusic": "mp3",
   "typeVideo": "video",
   "vm": "movie",
   "s": "spoken",
+  "kniha": "knihy",
   "now": "now",
-  "jokes": "jokes",
+  "mor": "moravske",
+  "moric": "moric",
+  "lid": "lidove",
+  "kouzla": "kouzla",
+  "vtipy": "vtipy",
   "mh": "mp3/house",
-  "listHTMLFolder": "/Volumes/Ext1/youtube/htmllists"
+  "listHTMLFolder": "/fromHtml"
 }

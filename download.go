@@ -115,10 +115,8 @@ func (v *video) getFullMp3Name() string {
 func (v *video) getMp3() {
 
 	if v.createMp3 == true {
-		fmt.Println("get mp3")
-
 		var fullName = v.getFullName()
-		//var fullName = "/Users/pf/work/codesgo/youtube/Zwei.mp4"
+		fmt.Println("get mp3 + " + fullName)
 
 		if !core.FileExists(fullName) {
 			v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
@@ -366,10 +364,15 @@ func processVideoList(wg *sync.WaitGroup, list []video) {
 		}
 	}
 
-	fmt.Println("\n\nErrors:")
 	// process errors
+	firstErr := true
 	for _, v := range list {
 		if v.hasError == true {
+			if firstErr {
+				fmt.Println("\n\nErrors:")
+				firstErr = false
+			}
+
 			fmt.Println(&v.err)
 			v.printMe()
 		}
@@ -572,6 +575,7 @@ func main() {
 	loadVideoOptions(videoList)
 	loadVideoNames(videoList)
 
+	// TODO: better logic for split
 	splitPos := len(videoList) / 2
 
 	videoList1 := videoList[:splitPos]
@@ -585,6 +589,8 @@ func main() {
 	go processVideoList(&wg, videoList2)
 
 	wg.Wait()
+
+	// TODO: delete list.txt content
 }
 
 func parseHTML(videoList []video) ([]video, error) {

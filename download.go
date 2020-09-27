@@ -47,7 +47,7 @@ const (
 	root           = "root"
 	youtubeURL     = "https://youtube.com"
 	youtubeURLFull = "https://www.youtube.com/"
-	listHTMLFolder = "listHtmlFolder"
+	listHTMLFolder = "listHTMLFolder"
 	typeMusic      = "mp3"
 	typeVideo      = "video"
 	typeBoth       = "both"
@@ -538,7 +538,9 @@ func loadSettings() {
 	}
 
 	for key, val := range folders {
-		folders[key] = folders[root] + "/" + val
+		if !strings.HasPrefix(folders[key], "/") {
+			folders[key] = folders[root] + "/" + val
+		}
 	}
 
 	core.PrintE(folders)

@@ -41,7 +41,6 @@ import (
 
 var listFileNamePath = "list.txt"
 var listHTMLpagePath = "yyoutube-playlist-video-html.txt"
-var downloadRootDir = "./files"
 
 const (
 	root           = "root"
@@ -169,7 +168,7 @@ func createMp3(quality string, fullName string, videoName string) error {
 func (v *video) downloadVideoIndexesFiles() {
 	videoFullName := v.getFullName()
 
-	fmt.Println("stahuju", videoFullName, v.link)
+	fmt.Println("Download of", videoFullName, v.link)
 
 	if v.ytVideoOptions.videoIndex != "" {
 		cmd := exec.Command("youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
@@ -202,7 +201,7 @@ func (v *video) downloadVideoIndexesFiles() {
 func (v *video) removeVideo() {
 	if v.hasError == false && v.keepVideo == false {
 		fullName := v.getFullName()
-		fmt.Println("mazu video: ", fullName)
+		fmt.Println("Delete video: ", fullName)
 		removeErr := os.Remove(fullName)
 		if removeErr != nil {
 			v.setError("Delete video file failed.", removeErr)
@@ -294,93 +293,75 @@ func getExtensionFromYtIndexLine(line string) (extension string) {
 	return extension
 }
 
-func loadVideoNames(list []video) {
-	for i := 0; i < len(list); i++ {
-		v := &list[i]
-		if v.hasError == false {
-			cmd := exec.Command("youtube-dl", "-e", v.link)
-			out, errCO := cmd.CombinedOutput()
+func loadVideoNames(v video) video {
+	if v.hasError == false {
+		cmd := exec.Command("youtube-dl", "-e", v.link)
+		out, errCO := cmd.CombinedOutput()
 
-			if errCO != nil {
-				core.LogError(errCO, "cmd.Run() failed with")
-			}
-
-			bufferOutput := string(out)
-
-			bufferOutput = core.CleanCharactersFromString(bufferOutput)
-			v.videoName = bufferOutput
+		if errCO != nil {
+			core.LogError(errCO, "cmd.Run() failed with")
 		}
+
+		bufferOutput := string(out)
+
+		bufferOutput = core.CleanCharactersFromString(bufferOutput)
+		v.videoName = bufferOutput
 	}
+	return v
 }
 
-func loadVideoOptions(list []video) {
-	for i := 0; i < len(list); i++ {
-		v := &list[i]
-		if v.hasError == false {
-			cmd := exec.Command("youtube-dl", "-F", v.link)
-			out, errCO := cmd.CombinedOutput()
+func loadVideoOptions(v video) video {
+	if v.hasError == false {
+		cmd := exec.Command("youtube-dl", "-F", v.link)
+		out, errCO := cmd.CombinedOutput()
 
-			if errCO != nil {
-				v.setError("get video index failed", errCO)
-			}
+		if errCO != nil {
+			v.setError("get video index failed", errCO)
+		}
 
-			bufferOutput := string(out)
-			hasAudioSource, errVideo := v.getBestQualityVideo(bufferOutput)
+		bufferOutput := string(out)
+		hasAudioSource, errVideo := v.getBestQualityVideo(bufferOutput)
 
-			if errVideo != nil {
-				v.setError("bestquality failed with", errVideo)
-			}
+		if errVideo != nil {
+			v.setError("bestquality failed with", errVideo)
+		}
 
-			if v.createMp3 && hasAudioSource == false {
-				errAudio := v.getBestQualityAudio(bufferOutput)
+		if v.createMp3 && hasAudioSource == false {
+			errAudio := v.getBestQualityAudio(bufferOutput)
 
-				if errAudio != nil {
-					v.setError("audio get best quality failed with", errAudio)
-				}
+			if errAudio != nil {
+				v.setError("audio get best quality failed with", errAudio)
 			}
 		}
 	}
+
+	return v
 }
 
-func processVideoList(wg *sync.WaitGroup, list []video) {
+func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel chan video) {
 	defer wg.Done()
-	numberOfVideos := len(list)
 
-	// for index, v := range list {
-	for index := 0; index < len(list); index++ {
-		v := &list[index]
-		fmt.Printf("processing %d out of %d \n", index+1, numberOfVideos)
-
+	for v := range videoChannel {
+		fmt.Println("Processing video: " + v.videoName + " | " + v.link)
 		if v.hasError == false {
 			v.downloadVideoIndexesFiles()
 
+			if v.hasError == false {
+
+				v.getMp3()
+				v.removeVideo()
+				v = moveFile(v)
+			}
+
 			if v.hasError == true {
-				continue
+				errorChannel <- v
 			}
-
-			v.getMp3()
-			v.removeVideo()
-			moveFiles(v)
-		}
-	}
-
-	// process errors
-	firstErr := true
-	for _, v := range list {
-		if v.hasError == true {
-			if firstErr {
-				fmt.Println("\n\nErrors:")
-				firstErr = false
-			}
-
-			fmt.Println(&v.err)
-			v.printMe()
 		}
 	}
 
 }
 
-func moveFiles(v *video) {
+func moveFile(v video) video {
 	moveToDir := ""
 	nameOfFile := ""
 
@@ -395,7 +376,7 @@ func moveFiles(v *video) {
 	}
 
 	if core.FileExists(nameOfFile) {
-		errMoveVideo := os.Rename(nameOfFile, downloadRootDir+"/"+moveToDir+"/"+nameOfFile)
+		errMoveVideo := os.Rename(nameOfFile, moveToDir+"/"+nameOfFile)
 
 		if errMoveVideo != nil {
 			v.setError("Moving video file failed for file:", errMoveVideo)
@@ -411,13 +392,14 @@ func moveFiles(v *video) {
 
 		nameOfFile = v.getFullMp3Name()
 
-		errMoveMp3 := os.Rename(nameOfFile, downloadRootDir+"/"+moveToDir+"/"+nameOfFile)
+		errMoveMp3 := os.Rename(nameOfFile, moveToDir+"/"+nameOfFile)
 
 		if errMoveMp3 != nil {
 			v.setError("Moving mp3 file failed for file:", errMoveMp3)
 		}
 	}
 
+	return v
 }
 
 func loadVideoList(videoList []video) ([]video, error) {
@@ -449,7 +431,6 @@ func parseLine(line string) (v video) {
 		v.isEmpty = true
 		return v
 	}
-	//fmt.Println("parsovani: ", line)
 
 	var subParts []string
 
@@ -574,25 +555,57 @@ func main() {
 		core.LogError(err, "Fail to load list file.")
 	}
 
-	loadVideoOptions(videoList)
-	loadVideoNames(videoList)
-
-	// TODO: better logic for split
-	splitPos := len(videoList) / 2
-
-	videoList1 := videoList[:splitPos]
-	videoList2 := videoList[splitPos:]
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go processVideoList(&wg, videoList1)
-	wg.Add(1)
-	go processVideoList(&wg, videoList2)
-
-	wg.Wait()
+	doWork(videoList)
 
 	// TODO: delete list.txt content
+}
+
+func processErrors(wg *sync.WaitGroup, errorChannel chan video) {
+	defer wg.Done()
+
+	firstErr := true
+
+	for v := range errorChannel {
+		if v.hasError == true {
+			if firstErr {
+				fmt.Println("\n\nErrors:")
+				firstErr = false
+			}
+
+			fmt.Println(&v.err)
+			v.printMe()
+		}
+	}
+}
+
+func doWork(videoList []video) {
+
+	videoChannel := make(chan video)
+	errorChannel := make(chan video)
+
+	wgProcess := new(sync.WaitGroup)
+	wgError := new(sync.WaitGroup)
+
+	wgError.Add(1)
+	go processErrors(wgError, errorChannel)
+
+	for i := 0; i < 2; i++ {
+		wgProcess.Add(1)
+		go processVideoList(wgProcess, videoChannel, errorChannel)
+	}
+
+	for index := 0; index < len(videoList); index++ {
+		v := loadVideoOptions(videoList[index])
+		v = loadVideoNames(v)
+		videoChannel <- v
+	}
+
+	close(videoChannel)
+	wgProcess.Wait()
+
+	close(errorChannel)
+	wgError.Wait()
+
 }
 
 func parseHTML(videoList []video) ([]video, error) {

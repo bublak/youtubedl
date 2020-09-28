@@ -376,7 +376,7 @@ func moveFile(v video) video {
 	}
 
 	if core.FileExists(nameOfFile) {
-		errMoveVideo := os.Rename(nameOfFile, moveToDir+"/"+nameOfFile)
+		errMoveVideo := moveWrapper(nameOfFile, moveToDir+"/"+nameOfFile)
 
 		if errMoveVideo != nil {
 			v.setError("Moving video file failed for file:", errMoveVideo)
@@ -392,7 +392,7 @@ func moveFile(v video) video {
 
 		nameOfFile = v.getFullMp3Name()
 
-		errMoveMp3 := os.Rename(nameOfFile, moveToDir+"/"+nameOfFile)
+		errMoveMp3 := moveWrapper(nameOfFile, moveToDir+"/"+nameOfFile)
 
 		if errMoveMp3 != nil {
 			v.setError("Moving mp3 file failed for file:", errMoveMp3)
@@ -400,6 +400,33 @@ func moveFile(v video) video {
 	}
 
 	return v
+}
+
+// fix the cross-device error for external disks
+func moveWrapper(srcFolder, dstFolder string) error {
+	fmt.Println("move file : ", srcFolder, dstFolder)
+	if srcFolder == "" || dstFolder == "" {
+		return errors.New("move file failed, empty source or destination")
+	}
+	if srcFolder == dstFolder {
+		return nil
+	}
+
+	errMoveMp3 := os.Rename(srcFolder, dstFolder)
+	if errMoveMp3 != nil && strings.Contains(errMoveMp3.Error(), "cross-device") {
+
+		cpCmd := exec.Command("cp", "-rf", srcFolder, dstFolder)
+		err := cpCmd.Run()
+		if err != nil {
+			return err
+		}
+
+		if err := os.Remove(srcFolder); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func loadVideoList(videoList []video) ([]video, error) {
@@ -522,10 +549,13 @@ func loadSettings() {
 		if !strings.HasPrefix(folders[key], "/") {
 			folders[key] = folders[root] + "/" + val
 		}
+
+		if strings.HasSuffix(folders[key], "/") {
+			folders[key] = strings.TrimSuffix(folders[key], "/")
+		}
 	}
 
-	core.PrintE(folders)
-
+	// core.PrintE(folders)
 }
 
 func main() {
@@ -572,7 +602,7 @@ func processErrors(wg *sync.WaitGroup, errorChannel chan video) {
 				firstErr = false
 			}
 
-			fmt.Println(&v.err)
+			fmt.Println(v.err)
 			v.printMe()
 		}
 	}

@@ -549,7 +549,7 @@ func checkOrCreateFolder(folderIn string) (folderOut string, err error) {
 	exists := core.FolderExists(folderIn)
 
 	if !exists {
-		err = os.MkdirAll(folderIn, 0664)
+		err = os.MkdirAll(folderIn, 0774)
 		if err != nil {
 			return "", err
 		}

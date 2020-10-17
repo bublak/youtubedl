@@ -28,12 +28,14 @@ func CleanCharactersFromString(str string) (cleanedString string) {
 	cleanedString = strings.ReplaceAll(cleanedString, ",", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "~", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "`", "_")
+	cleanedString = strings.ReplaceAll(cleanedString, "💀", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "\"", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "\\", "_")
 
 	cleanedString = strings.ReplaceAll(cleanedString, "___", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "__", "_")
 	cleanedString = strings.TrimRight(cleanedString, "_")
+	cleanedString = strings.TrimLeft(cleanedString, "_")
 
 	return cleanedString
 }

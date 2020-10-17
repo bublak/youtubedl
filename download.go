@@ -41,6 +41,7 @@ import (
 
 var listFileNamePath = "list.txt"
 var listHTMLpagePath = "yyoutube-playlist-video-html.txt"
+var listHTMLpagePathLoaded = "xyoutube-playlist-video-html.txt"
 
 const (
 	root           = "root"
@@ -454,6 +455,7 @@ func loadVideoList(videoList []video) ([]video, error) {
 }
 
 func parseLine(line string) (v video) {
+	line = strings.TrimSpace(line)
 	if line == "" {
 		v.isEmpty = true
 		return v
@@ -464,7 +466,8 @@ func parseLine(line string) (v video) {
 	subParts = strings.Split(line, " ")
 
 	var vURL string
-	var videoFlag string
+	var typeFlag string
+	var folderFlag string
 
 	if len(subParts) == 0 {
 		v.isEmpty = true
@@ -477,7 +480,7 @@ func parseLine(line string) (v video) {
 		vURL = subParts[0]
 
 		if strings.HasPrefix(vURL, youtubeURLFull) == false && strings.HasPrefix(vURL, youtubeURL) == false {
-			v.setError(fmt.Sprintf("Parsing url failed for video line: %s", vURL), nil)
+			v.setError(fmt.Sprintf("Parsing url failed for video line: %s, expecting url starts as %s or %s", vURL, youtubeURLFull, youtubeURL), nil)
 		}
 
 		v.link = vURL
@@ -488,36 +491,44 @@ func parseLine(line string) (v video) {
 	v.keepVideo = true
 
 	if len(subParts) > 1 {
-		videoFlag = strings.TrimSpace(subParts[1])
+		// type of video process
+		typeFlag = strings.TrimSpace(subParts[1])
 
-		if videoFlag == typeBoth { //both
+		if typeFlag == typeBoth { //both
 			v.createMp3 = true
 			v.keepVideo = true
 		}
 
-		if videoFlag == typeMusic {
+		if typeFlag == typeMusic {
 			v.createMp3 = true
 			v.keepVideo = false
 		}
 
-		if videoFlag == typeVideo {
+		if typeFlag == typeVideo {
 			v.keepVideo = true
 			v.createMp3 = false
 		}
 	}
 
 	if len(subParts) > 2 {
-		// this second param must be contained in folders mapping
-		videoFlag = strings.TrimSpace(subParts[2])
+		// folder process
+		folderFlag = strings.TrimSpace(subParts[2])
 
-		if videoFlag == "" {
-
-		} else {
-			if val, ok := folders[videoFlag]; ok {
+		if folderFlag != "" {
+			if val, ok := folders[folderFlag]; ok {
 				v.moveDir = val
 			} else {
-				core.LogError(errors.New("using root folder"), "missing mapping for folder flag: "+videoFlag)
-				v.moveDir = folders[root]
+				// check folder exists or create folder
+				folder, err := checkOrCreateFolder(folderFlag)
+
+				if err != nil {
+					core.LogError(errors.New("folder not exist, using root folder"), "folder can not be created: "+folderFlag)
+					v.moveDir = folders[root]
+				} else {
+					folders[folderFlag] = folder
+					v.moveDir = folder
+				}
+
 			}
 		}
 
@@ -526,10 +537,32 @@ func parseLine(line string) (v video) {
 	return v
 }
 
+func checkOrCreateFolder(folderIn string) (folderOut string, err error) {
+	if !strings.HasPrefix(folderIn, "/") {
+		folderIn = folders[root] + "/" + folderIn
+	}
+
+	if strings.HasSuffix(folderIn, "/") {
+		folderIn = strings.TrimSuffix(folderIn, "/")
+	}
+
+	exists := core.FolderExists(folderIn)
+
+	if !exists {
+		err = os.MkdirAll(folderIn, 0664)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return folderIn, nil
+}
+
 func loadSettings() {
 	settingsFile, err := os.Open("settings.json")
 	if err != nil {
-		fmt.Println(err)
+		core.LogError(err, "settings.json file can not be open")
+		os.Exit(1)
 	}
 	defer settingsFile.Close()
 
@@ -541,18 +574,12 @@ func loadSettings() {
 	}
 
 	if _, ok := folders[root]; !ok {
-		core.LogError(nil, "missing mandatory 'root' declaration in folders json")
+		core.LogError(nil, "please add 'root' declaration in file settings.json")
 		os.Exit(1)
 	}
 
 	for key, val := range folders {
-		if !strings.HasPrefix(folders[key], "/") {
-			folders[key] = folders[root] + "/" + val
-		}
-
-		if strings.HasSuffix(folders[key], "/") {
-			folders[key] = strings.TrimSuffix(folders[key], "/")
-		}
+		folders[key], err = checkOrCreateFolder(val)
 	}
 
 	// core.PrintE(folders)
@@ -576,6 +603,11 @@ func main() {
 		if len(videoList) > 0 {
 			fmt.Printf("Html videos loaded, count: %d", len(videoList))
 			time.Sleep(1 * time.Second)
+			err = moveWrapper(listHTMLpagePath, listHTMLpagePathLoaded)
+			if err != nil {
+				core.LogError(err, "can not move file "+listHTMLpagePath)
+				os.Exit(1)
+			}
 		}
 	}
 

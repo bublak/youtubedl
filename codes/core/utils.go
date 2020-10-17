@@ -37,5 +37,16 @@ func FileExists(filename string) bool {
 	if os.IsNotExist(err) {
 		return false
 	}
+
 	return !info.IsDir()
+}
+
+// FolderExists checks if a folder exists before we
+// try using it to prevent further errors.
+func FolderExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return info.IsDir()
 }

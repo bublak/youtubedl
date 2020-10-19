@@ -49,8 +49,11 @@ const (
 	youtubeURLFull = "https://www.youtube.com/"
 	listHTMLFolder = "listHTMLFolder"
 	typeMusic      = "mp3"
+	typeMusicShort = "m"
 	typeVideo      = "video"
+	typeVideoShort = "v"
 	typeBoth       = "both"
+	typeBothShort  = "b"
 )
 
 var folders map[string]string
@@ -494,17 +497,17 @@ func parseLine(line string) (v video) {
 		// type of video process
 		typeFlag = strings.TrimSpace(subParts[1])
 
-		if typeFlag == typeBoth { //both
+		if typeFlag == typeBoth || typeFlag == typeBothShort { //both
 			v.createMp3 = true
 			v.keepVideo = true
 		}
 
-		if typeFlag == typeMusic {
+		if typeFlag == typeMusic || typeFlag == typeMusicShort {
 			v.createMp3 = true
 			v.keepVideo = false
 		}
 
-		if typeFlag == typeVideo {
+		if typeFlag == typeVideo || typeFlag == typeVideoShort {
 			v.keepVideo = true
 			v.createMp3 = false
 		}

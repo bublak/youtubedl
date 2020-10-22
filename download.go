@@ -33,6 +33,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -102,6 +103,8 @@ func (v *video) setError(msg string, err error) {
 
 	if err == nil {
 		v.err = errors.New(msg)
+	} else {
+		v.err = err
 	}
 }
 
@@ -320,7 +323,7 @@ func loadVideoOptions(v video) video {
 		out, errCO := cmd.CombinedOutput()
 
 		if errCO != nil {
-			v.setError("get video index failed", errCO)
+			v.setError("get video index failed	", errCO)
 		}
 
 		bufferOutput := string(out)
@@ -342,11 +345,33 @@ func loadVideoOptions(v video) video {
 	return v
 }
 
+type incCounter struct {
+	mux sync.Mutex
+	c   int
+}
+
+var processVideosCounter incCounter = incCounter{}
+
+func (counter *incCounter) increment() {
+	counter.mux.Lock()
+	defer counter.mux.Unlock()
+
+	counter.c++
+}
+
+func (counter *incCounter) getValueAsString() string {
+	counter.mux.Lock()
+	defer counter.mux.Unlock()
+
+	return strconv.Itoa(counter.c)
+}
+
 func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel chan video) {
 	defer wg.Done()
 
 	for v := range videoChannel {
-		fmt.Println("Processing video: " + v.videoName + " | " + v.link)
+		processVideosCounter.increment()
+		fmt.Printf("Processing video %s/%d: %s | %s\n", processVideosCounter.getValueAsString(), allVideosCount, v.videoName, v.link)
 		if v.hasError == false {
 			v.downloadVideoIndexesFiles()
 
@@ -588,6 +613,8 @@ func loadSettings() {
 	// core.PrintE(folders)
 }
 
+var allVideosCount int
+
 func main() {
 
 	loadSettings()
@@ -604,7 +631,7 @@ func main() {
 		}
 
 		if len(videoList) > 0 {
-			fmt.Printf("Html videos loaded, count: %d", len(videoList))
+			fmt.Printf("Html videos loaded, count: %d \n", len(videoList))
 			time.Sleep(1 * time.Second)
 			err = moveWrapper(listHTMLpagePath, listHTMLpagePathLoaded)
 			if err != nil {
@@ -615,6 +642,9 @@ func main() {
 	}
 
 	videoList, err := loadVideoList(videoList)
+
+	allVideosCount = len(videoList)
+	fmt.Printf("All videos loaded, count: %d \n", allVideosCount)
 
 	if err != nil {
 		core.LogError(err, "Fail to load list file.")

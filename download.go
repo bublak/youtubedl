@@ -41,8 +41,11 @@ import (
 )
 
 var listFileNamePath = "list.txt"
-var listHTMLpagePath = "yyoutube-playlist-video-html.txt"
-var listHTMLpagePathLoaded = "xyoutube-playlist-video-html.txt"
+var videoHTMLpagePath = "videolisthtml.txt"
+var videoHTMLpagePathLoaded = "videolisthtml.txt_d"
+
+var listHTMLpagePath = "playlisthtml.txt"
+var listHTMLpagePathLoaded = "playlisthtml.txt_d"
 
 const (
 	root           = "root"
@@ -55,6 +58,7 @@ const (
 	typeVideoShort = "v"
 	typeBoth       = "both"
 	typeBothShort  = "b"
+	listURLPart    = "/watch?v="
 )
 
 var folders map[string]string
@@ -111,7 +115,7 @@ func (v *video) setError(msg string, err error) {
 var videoList = []video{}
 
 func (v *video) getFullName() string {
-	return v.videoName + "." + v.videoExtension
+	return v.videoName + "-" + v.videoIndex + "." + v.videoExtension
 }
 
 func (v *video) getFullMp3Name() string {
@@ -543,7 +547,7 @@ func parseLine(line string) (v video) {
 		folderFlag = strings.TrimSpace(subParts[2])
 
 		if folderFlag != "" {
-			if val, ok := folders[folderFlag]; ok {
+			if val, ok := folders[folderFlag]; ok && val != "" {
 				v.moveDir = val
 			} else {
 				// check folder exists or create folder
@@ -621,9 +625,9 @@ func main() {
 
 	videoList = []video{}
 
-	if core.FileExists(listHTMLpagePath) {
+	if core.FileExists(videoHTMLpagePath) {
 		var err error
-		videoList, err = parseHTML(videoList)
+		videoList, err = parseVideoHTML(videoList)
 
 		if err != nil {
 			core.LogError(err, "Fail to parse html txt list.")
@@ -632,6 +636,27 @@ func main() {
 
 		if len(videoList) > 0 {
 			fmt.Printf("Html videos loaded, count: %d \n", len(videoList))
+			time.Sleep(1 * time.Second)
+			err = moveWrapper(videoHTMLpagePath, videoHTMLpagePathLoaded)
+			if err != nil {
+				core.LogError(err, "can not move file "+videoHTMLpagePath)
+				os.Exit(1)
+			}
+		}
+	}
+
+	if core.FileExists(listHTMLpagePath) {
+		var err error
+		origLength := len(videoList)
+		videoList, err = parseListHTML(videoList)
+
+		if err != nil {
+			core.LogError(err, "Fail to parse html txt list.")
+			os.Exit(1)
+		}
+
+		if len(videoList)-origLength > 0 {
+			fmt.Printf("Html list videos loaded, count: %d \n", len(videoList)-origLength)
 			time.Sleep(1 * time.Second)
 			err = moveWrapper(listHTMLpagePath, listHTMLpagePathLoaded)
 			if err != nil {
@@ -703,9 +728,9 @@ func doWork(videoList []video) {
 
 }
 
-func parseHTML(videoList []video) ([]video, error) {
+func parseVideoHTML(videoList []video) ([]video, error) {
 
-	file, errOpenFile := os.Open(listHTMLpagePath)
+	file, errOpenFile := os.Open(videoHTMLpagePath)
 
 	if errOpenFile != nil {
 		return nil, errOpenFile
@@ -724,7 +749,8 @@ func parseHTML(videoList []video) ([]video, error) {
 
 			if strings.Contains(line, "href") {
 
-				pos := strings.Index(line, "href=\"")
+				pos := strings.Index(line, "href=\""+listURLPart)
+
 				if pos > 0 {
 					// example: href="/watch?v=AspGAZyZzLc">
 					length := 27
@@ -741,9 +767,9 @@ func parseHTML(videoList []video) ([]video, error) {
 					substring = substring[:len(substring)-1]
 					videoURL := youtubeURL + substring
 
-					v := parseLine(videoURL + " " + typeMusic + " " + listHTMLFolder)
+					v := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
 
-					videoList = append(videoList, v)
+					videoList = appendIfMissing(videoList, v)
 				}
 			}
 		}
@@ -754,4 +780,69 @@ func parseHTML(videoList []video) ([]video, error) {
 	}
 
 	return videoList, nil
+}
+
+func parseListHTML(videoList []video) ([]video, error) {
+
+	file, errOpenFile := os.Open(listHTMLpagePath)
+
+	// test line:     <a class="yt-simple-endpoint style-scope ytd-playlist-video-renderer" href="/watch?v=wVp_VlkWqxI&amp;list=WL&amp;index=552">
+	if errOpenFile != nil {
+		return nil, errOpenFile
+	}
+
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if len(line) > 1 && strings.Contains(line, "yt-simple-endpoint") {
+
+			if strings.Contains(line, "href") {
+
+				pos := strings.Index(line, "href=\""+listURLPart)
+				if pos > 0 {
+					// example: href="/watch?v=AspGAZyZzLc">
+					length := 27
+					substring := line[pos+6 : pos+length] // skip hfref="
+
+					lastChar := substring[len(substring):]
+
+					if lastChar == "\"" || lastChar == "&" {
+
+						unknownURL := errors.New(substring + " is not known url for parsing")
+						return nil, unknownURL
+					}
+
+					substring = substring[:len(substring)-1]
+					videoURL := youtubeURL + substring
+
+					v := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
+
+					videoList = appendIfMissing(videoList, v)
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return videoList, nil
+}
+
+func appendIfMissing(list []video, v video) []video {
+	// TODO: cyklus odzadu pole bude v tomhle pripade rychlejsi, protoze stejny video bude vzdy na konci
+	for _, elInSlice := range list {
+		if elInSlice.link == v.link {
+			return list
+		}
+	}
+
+	return append(list, v)
 }

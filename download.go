@@ -11,17 +11,19 @@
 //
 //
 //  OS: linux, macosx
-//  !keep youtube-dl updated
+//  !keep python3 /usr/local/bin/youtube-dl updated
 //
 //  usage: create file list.txt and put youtube links inside, one link per line, example:
 //  list.txt:
 //  	https://www.youtube.com/watch?v=u3m2kQ-tOEk
 //  	https://www.youtube.com/watch?v=kkJtHXfRH74&list=WL&index=24&t=0s m
 //  	https://www.youtube.com/watch?v=qGyPuey-1Jw v
+//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v newFolder
+//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v FolderKeyDefinedInSettingsFile
 //
-//  @requrired youtube-dl, ffmpeg
+//  @requrired python3 /usr/local/bin/youtube-dl, ffmpeg
 //  @author    Pavel Filipcik
-//  @year      2017-2020
+//  @year      2017-2021
 
 package main
 
@@ -52,10 +54,12 @@ const (
 	youtubeURL     = "https://youtube.com"
 	youtubeURLFull = "https://www.youtube.com/"
 	listHTMLFolder = "listHTMLFolder"
-	typeMusic      = "mp3"
+	typeMusic      = "typeMusic"
+	typeVideo      = "typeVideo"
 	typeMusicShort = "m"
-	typeVideo      = "video"
+	typeMusicLong  = "mp3"
 	typeVideoShort = "v"
+	typeVideoLong  = "video"
 	typeBoth       = "both"
 	typeBothShort  = "b"
 	listURLPart    = "/watch?v="
@@ -182,29 +186,29 @@ func (v *video) downloadVideoIndexesFiles() {
 	fmt.Println("Download of", videoFullName, v.link)
 
 	if v.ytVideoOptions.videoIndex != "" {
-		cmd := exec.Command("youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
+		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
 		err := cmd.Run()
 
 		if err != nil {
-			//fmt.Println("youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
+			//fmt.Println("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
 
-			errString := fmt.Sprintln("youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
+			errString := fmt.Sprintln("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
 
-			v.setError("Command youtube-dl failed with: "+errString, err)
+			v.setError("Command python3 /usr/local/bin/youtube-dl failed with: "+errString, err)
 		}
 
 		// fmt.Println(string(out))
 	}
 
 	if v.createMp3 && v.ytVideoOptions.videoIndex != v.ytVideoOptions.musicIndex {
-		cmd := exec.Command("youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
+		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
 		err := cmd.Run()
 
 		if err != nil {
-			errString := fmt.Sprint("youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
+			errString := fmt.Sprint("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
 
-			//fmt.Println("youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
-			v.setError("Command youtube-dl failed with: "+errString, err)
+			//fmt.Println("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
+			v.setError("Command python3 /usr/local/bin/youtube-dl failed with: "+errString, err)
 		}
 	}
 }
@@ -306,7 +310,7 @@ func getExtensionFromYtIndexLine(line string) (extension string) {
 
 func loadVideoNames(v video) video {
 	if v.hasError == false {
-		cmd := exec.Command("youtube-dl", "-e", v.link)
+		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-e", v.link)
 		out, errCO := cmd.CombinedOutput()
 
 		if errCO != nil {
@@ -323,7 +327,7 @@ func loadVideoNames(v video) video {
 
 func loadVideoOptions(v video) video {
 	if v.hasError == false {
-		cmd := exec.Command("youtube-dl", "-F", v.link)
+		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-F", v.link)
 		out, errCO := cmd.CombinedOutput()
 
 		if errCO != nil {
@@ -531,12 +535,12 @@ func parseLine(line string) (v video) {
 			v.keepVideo = true
 		}
 
-		if typeFlag == typeMusic || typeFlag == typeMusicShort {
+		if typeFlag == typeMusic || typeFlag == typeMusicShort || typeFlag == typeMusicLong {
 			v.createMp3 = true
 			v.keepVideo = false
 		}
 
-		if typeFlag == typeVideo || typeFlag == typeVideoShort {
+		if typeFlag == typeVideo || typeFlag == typeVideoShort || typeFlag == typeVideoLong {
 			v.keepVideo = true
 			v.createMp3 = false
 		}

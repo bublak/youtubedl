@@ -73,7 +73,6 @@ type ytVideoOptions struct {
 }
 
 type video struct {
-	isEmpty        bool
 	hasError       bool
 	err            error
 	errMsg         string
@@ -90,7 +89,6 @@ type video struct {
 }
 
 func (v *video) initVideo() {
-	v.isEmpty = true
 	v.hasError = false
 	v.errMsg = ""
 	v.err = nil
@@ -379,7 +377,7 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel 
 
 	for v := range videoChannel {
 		processVideosCounter.increment()
-		fmt.Printf("Processing video %s/%d: %s | %s\n", processVideosCounter.getValueAsString(), allVideosCount, v.videoName, v.link)
+		fmt.Printf("  Processing video %s/%d: %s | %s\n", processVideosCounter.getValueAsString(), allVideosCount, v.videoName, v.link)
 		if v.hasError == false {
 			v.downloadVideoIndexesFiles()
 
@@ -466,6 +464,13 @@ func moveWrapper(srcFolder, dstFolder string) error {
 	return nil
 }
 
+type ERR_PARSE_EMPTY struct {
+}
+
+func (e ERR_PARSE_EMPTY) Error() string {
+	return "Parsed line is empty"
+}
+
 func loadVideoList(videoList []video) ([]video, error) {
 	file, errOpenFile := os.Open(listFileNamePath)
 	if errOpenFile != nil {
@@ -476,10 +481,12 @@ func loadVideoList(videoList []video) ([]video, error) {
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
-		v := parseLine(scanner.Text())
+		v, err := parseLine(scanner.Text())
 
-		if v.isEmpty == false {
+		if err == nil {
 			videoList = append(videoList, v)
+		} else if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
+			return nil, err
 		}
 	}
 
@@ -490,11 +497,10 @@ func loadVideoList(videoList []video) ([]video, error) {
 	return videoList, nil
 }
 
-func parseLine(line string) (v video) {
+func parseLine(line string) (v video, err error) {
 	line = strings.TrimSpace(line)
 	if line == "" {
-		v.isEmpty = true
-		return v
+		return v, ERR_PARSE_EMPTY{}
 	}
 
 	var subParts []string
@@ -506,8 +512,7 @@ func parseLine(line string) (v video) {
 	var folderFlag string
 
 	if len(subParts) == 0 {
-		v.isEmpty = true
-		return v
+		return v, ERR_PARSE_EMPTY{}
 	}
 
 	v.parsingLine = line
@@ -533,16 +538,16 @@ func parseLine(line string) (v video) {
 		if typeFlag == typeBoth || typeFlag == typeBothShort { //both
 			v.createMp3 = true
 			v.keepVideo = true
-		}
-
-		if typeFlag == typeMusic || typeFlag == typeMusicShort || typeFlag == typeMusicLong {
+		} else if typeFlag == typeMusic || typeFlag == typeMusicShort || typeFlag == typeMusicLong {
 			v.createMp3 = true
 			v.keepVideo = false
-		}
-
-		if typeFlag == typeVideo || typeFlag == typeVideoShort || typeFlag == typeVideoLong {
+		} else if typeFlag == typeVideo || typeFlag == typeVideoShort || typeFlag == typeVideoLong {
 			v.keepVideo = true
 			v.createMp3 = false
+		} else {
+			err := errors.New("unknown type to convert to")
+			core.LogError(err, "Wrong type: "+typeFlag)
+			return v, err
 		}
 	}
 
@@ -570,7 +575,7 @@ func parseLine(line string) (v video) {
 
 	}
 
-	return v
+	return v, nil
 }
 
 func checkOrCreateFolder(folderIn string) (folderOut string, err error) {
@@ -677,6 +682,7 @@ func main() {
 
 	if err != nil {
 		core.LogError(err, "Fail to load list file.")
+		os.Exit(1)
 	}
 
 	doWork(videoList)
@@ -771,9 +777,14 @@ func parseVideoHTML(videoList []video) ([]video, error) {
 					substring = substring[:len(substring)-1]
 					videoURL := youtubeURL + substring
 
-					v := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
+					v, err := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
 
-					videoList = appendIfMissing(videoList, v)
+					if err == nil {
+						videoList = appendIfMissing(videoList, v)
+					} else if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
+						return nil, err
+					}
+
 				}
 			}
 		}
@@ -825,9 +836,13 @@ func parseListHTML(videoList []video) ([]video, error) {
 					substring = substring[:len(substring)-1]
 					videoURL := youtubeURL + substring
 
-					v := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
+					v, err := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
 
-					videoList = appendIfMissing(videoList, v)
+					if err == nil {
+						videoList = appendIfMissing(videoList, v)
+					} else if _, ok := err.(*ERR_PARSE_EMPTY); ok == false {
+						return nil, err
+					}
 				}
 			}
 		}

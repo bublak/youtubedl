@@ -110,7 +110,7 @@ func (v *video) setError(msg string, err error) {
 	if err == nil {
 		v.err = errors.New(msg)
 	} else {
-		v.err = err
+		v.err = errors.New(msg + err.Error())
 	}
 }
 
@@ -181,34 +181,56 @@ func createMp3(quality string, fullName string, videoName string) error {
 func (v *video) downloadVideoIndexesFiles() {
 	videoFullName := v.getFullName()
 
-	fmt.Println("Download of", videoFullName, v.link)
+	fmt.Printf("\nStarted download of %s (%s)\n", videoFullName, v.link)
 
 	if v.ytVideoOptions.videoIndex != "" {
-		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
-		err := cmd.Run()
-
-		if err != nil {
-			//fmt.Println("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
-
-			errString := fmt.Sprintln("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.videoIndex, "-o", videoFullName, v.link)
-
-			v.setError("Command python3 /usr/local/bin/youtube-dl failed with: "+errString, err)
-		}
-
-		// fmt.Println(string(out))
+		v.runExternalDownloadCommand(v.ytVideoOptions.videoIndex, videoFullName, v.link)
 	}
 
 	if v.createMp3 && v.ytVideoOptions.videoIndex != v.ytVideoOptions.musicIndex {
-		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
-		err := cmd.Run()
-
-		if err != nil {
-			errString := fmt.Sprint("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
-
-			//fmt.Println("python3 /usr/local/bin/youtube-dl", "-f", v.ytVideoOptions.musicIndex, "-o", videoFullName, v.link)
-			v.setError("Command python3 /usr/local/bin/youtube-dl failed with: "+errString, err)
-		}
+		v.runExternalDownloadCommand(v.ytVideoOptions.musicIndex, videoFullName, v.link)
 	}
+
+	fmt.Printf("\nFinished download of %s (%s)\n", videoFullName, v.link)
+}
+
+func (v *video) runExternalDownloadCommand(index, fullName, link string) {
+	cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "--newline", "-f", index, "-o", fullName, link)
+
+	// create a pipe for the output of the script
+	cmdReader, err := cmd.StdoutPipe()
+	if err != nil {
+		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
+		fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for Cmd", err)
+		return
+	}
+
+	scanner := bufio.NewScanner(cmdReader)
+
+	go func(fullName string) {
+		var counter int = 0
+		for scanner.Scan() {
+			counter++
+			if counter%5 == 0 {
+				fmt.Printf("\033[F \t %s > %s\n", fullName, scanner.Text())
+			}
+		}
+	}(fullName)
+
+	err = cmd.Start()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error starting Cmd", err)
+		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
+		return
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
+		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
+		return
+	}
+
 }
 
 func (v *video) removeVideo() {
@@ -377,9 +399,10 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel 
 
 	for v := range videoChannel {
 		processVideosCounter.increment()
-		fmt.Printf("  Processing video %s/%d: %s | %s\n", processVideosCounter.getValueAsString(), allVideosCount, v.videoName, v.link)
+		fmt.Printf("  Processing video %s/%d: %s | %s\n\n", processVideosCounter.getValueAsString(), allVideosCount, v.videoName, v.link)
 		if v.hasError == false {
 			v.downloadVideoIndexesFiles()
+			time.Sleep(1 * time.Second)
 
 			if v.hasError == false {
 
@@ -629,7 +652,6 @@ func loadSettings() {
 var allVideosCount int
 
 func main() {
-
 	loadSettings()
 
 	videoList = []video{}
@@ -682,6 +704,7 @@ func main() {
 
 	if err != nil {
 		core.LogError(err, "Fail to load list file.")
+		//TODO print help here
 		os.Exit(1)
 	}
 

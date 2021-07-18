@@ -128,7 +128,7 @@ func (v *video) getMp3() {
 
 	if v.createMp3 == true {
 		var fullName = v.getFullName()
-		fmt.Println("get mp3 + " + fullName)
+		fmt.Println("create mp3 + " + fullName)
 
 		if !core.FileExists(fullName) {
 			v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
@@ -207,15 +207,16 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) {
 
 	scanner := bufio.NewScanner(cmdReader)
 
-	go func(fullName string) {
+	go func(ss string) {
 		var counter int = 0
+		fmt.Printf("\n") // this line will be removed with output
 		for scanner.Scan() {
 			counter++
-			if counter%5 == 0 {
-				fmt.Printf("\033[F \t %s > %s\n", fullName, scanner.Text())
+			if counter%10 == 0 {
+				fmt.Printf("\033[F \t %s > %s\n", ss, scanner.Text())
 			}
 		}
-	}(fullName)
+	}(v.link)
 
 	err = cmd.Start()
 	if err != nil {
@@ -401,8 +402,8 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel 
 		processVideosCounter.increment()
 		fmt.Printf("  Processing video %s/%d: %s | %s\n\n", processVideosCounter.getValueAsString(), allVideosCount, v.videoName, v.link)
 		if v.hasError == false {
+			time.Sleep(4 * time.Second)
 			v.downloadVideoIndexesFiles()
-			time.Sleep(1 * time.Second)
 
 			if v.hasError == false {
 

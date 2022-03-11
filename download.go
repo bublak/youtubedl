@@ -50,19 +50,20 @@ var listHTMLpagePath = "playlisthtml.txt"
 var listHTMLpagePathLoaded = "playlisthtml.txt_d"
 
 const (
-	root           = "root"
-	youtubeURL     = "https://youtube.com"
-	youtubeURLFull = "https://www.youtube.com/"
-	listHTMLFolder = "listHTMLFolder"
-	typeMusic      = "typeMusic"
-	typeVideo      = "typeVideo"
-	typeMusicShort = "m"
-	typeMusicLong  = "mp3"
-	typeVideoShort = "v"
-	typeVideoLong  = "video"
-	typeBoth       = "both"
-	typeBothShort  = "b"
-	listURLPart    = "/watch?v="
+	numberOfProcesses = 4
+	root              = "root"
+	youtubeURL        = "https://youtube.com"
+	youtubeURLFull    = "https://www.youtube.com/"
+	listHTMLFolder    = "listHTMLFolder"
+	typeMusic         = "typeMusic"
+	typeVideo         = "typeVideo"
+	typeMusicShort    = "m"
+	typeMusicLong     = "mp3"
+	typeVideoShort    = "v"
+	typeVideoLong     = "video"
+	typeBoth          = "both"
+	typeBothShort     = "b"
+	listURLPart       = "/watch?v="
 )
 
 var folders map[string]string
@@ -128,7 +129,7 @@ func (v *video) getMp3() {
 
 	if v.createMp3 == true {
 		var fullName = v.getFullName()
-		fmt.Println("create mp3 + " + fullName)
+		fmt.Println("create mp3 + " + fullName + "\n")
 
 		if !core.FileExists(fullName) {
 			v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
@@ -183,18 +184,31 @@ func (v *video) downloadVideoIndexesFiles() {
 
 	fmt.Printf("\nStarted download of %s (%s)\n", videoFullName, v.link)
 
+	var downloadErrorVideoIndex error
+	var downloadErrorMusicIndex error
+
 	if v.ytVideoOptions.videoIndex != "" {
-		v.runExternalDownloadCommand(v.ytVideoOptions.videoIndex, videoFullName, v.link)
+		downloadErrorVideoIndex = v.runExternalDownloadCommand(v.ytVideoOptions.videoIndex, videoFullName, v.link)
+	}
+
+	if downloadErrorVideoIndex != nil {
+		fmt.Printf("\n Finished download of videoIndex %s (%s) with error!\n", videoFullName, v.link)
 	}
 
 	if v.createMp3 && v.ytVideoOptions.videoIndex != v.ytVideoOptions.musicIndex {
-		v.runExternalDownloadCommand(v.ytVideoOptions.musicIndex, videoFullName, v.link)
+		downloadErrorMusicIndex = v.runExternalDownloadCommand(v.ytVideoOptions.musicIndex, videoFullName, v.link)
 	}
 
-	fmt.Printf("\nFinished download of %s (%s)\n", videoFullName, v.link)
+	if downloadErrorMusicIndex != nil {
+		fmt.Printf("\n Music finished download of musicIndex %s (%s) with error!\n", videoFullName, v.link)
+	}
+
+	if downloadErrorMusicIndex == nil && downloadErrorVideoIndex == nil {
+		fmt.Printf("\nFinished download of %s (%s)\n", videoFullName, v.link)
+	}
 }
 
-func (v *video) runExternalDownloadCommand(index, fullName, link string) {
+func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 	cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "--newline", "-f", index, "-o", fullName, link)
 
 	// create a pipe for the output of the script
@@ -202,7 +216,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) {
 	if err != nil {
 		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
 		fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for Cmd", err)
-		return
+		return err
 	}
 
 	scanner := bufio.NewScanner(cmdReader)
@@ -222,16 +236,18 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error starting Cmd", err)
 		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
-		return
+		return err
 	}
 
 	err = cmd.Wait()
 	if err != nil {
+		// TODO je tu mozny download zrestartovat ???
 		fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
 		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
-		return
+		return err
 	}
 
+	return nil
 }
 
 func (v *video) removeVideo() {
@@ -743,7 +759,7 @@ func doWork(videoList []video) {
 	wgError.Add(1)
 	go processErrors(wgError, errorChannel)
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < numberOfProcesses; i++ {
 		wgProcess.Add(1)
 		go processVideoList(wgProcess, videoChannel, errorChannel)
 	}

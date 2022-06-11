@@ -74,6 +74,7 @@ type ytVideoOptions struct {
 }
 
 type video struct {
+	counter        string
 	hasError       bool
 	err            error
 	errMsg         string
@@ -110,8 +111,10 @@ func (v *video) setError(msg string, err error) {
 
 	if err == nil {
 		v.err = errors.New(msg)
+		v.errMsg = msg
 	} else {
 		v.err = errors.New(msg + err.Error())
+		v.errMsg = msg
 	}
 }
 
@@ -129,7 +132,7 @@ func (v *video) getMp3() {
 
 	if v.createMp3 == true {
 		var fullName = v.getFullName()
-		fmt.Println("create mp3 + " + fullName + "\n")
+		fmt.Printf("create mp3 %s.| %s+ \n\n", v.counter, fullName)
 
 		if !core.FileExists(fullName) {
 			v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
@@ -182,7 +185,7 @@ func createMp3(quality string, fullName string, videoName string) error {
 func (v *video) downloadVideoIndexesFiles() {
 	videoFullName := v.getFullName()
 
-	fmt.Printf("\nStarted download of %s (%s)\n", videoFullName, v.link)
+	fmt.Printf("\nStarted download of %s.| %s (%s)\n", v.counter, videoFullName, v.link)
 
 	var downloadErrorVideoIndex error
 	var downloadErrorMusicIndex error
@@ -192,7 +195,7 @@ func (v *video) downloadVideoIndexesFiles() {
 	}
 
 	if downloadErrorVideoIndex != nil {
-		fmt.Printf("\n Finished download of videoIndex %s (%s) with error!\n", videoFullName, v.link)
+		fmt.Printf("\n Error download of videoIndex %s (%s)!\n", videoFullName, v.link)
 	}
 
 	if v.createMp3 && v.ytVideoOptions.videoIndex != v.ytVideoOptions.musicIndex {
@@ -200,11 +203,11 @@ func (v *video) downloadVideoIndexesFiles() {
 	}
 
 	if downloadErrorMusicIndex != nil {
-		fmt.Printf("\n Music finished download of musicIndex %s (%s) with error!\n", videoFullName, v.link)
+		fmt.Printf("\n  Error download of musicIndex %s (%s)!\n", videoFullName, v.link)
 	}
 
 	if downloadErrorMusicIndex == nil && downloadErrorVideoIndex == nil {
-		fmt.Printf("\nFinished download of %s (%s)\n", videoFullName, v.link)
+		fmt.Printf("\nFinished download of %s.| %s (%s)\n", v.counter, videoFullName, v.link)
 	}
 }
 
@@ -221,16 +224,16 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 
 	scanner := bufio.NewScanner(cmdReader)
 
-	go func(ss string) {
+	go func(vidLink string, position string) {
 		var counter int = 0
 		fmt.Printf("\n") // this line will be removed with output
 		for scanner.Scan() {
 			counter++
 			if counter%10 == 0 {
-				fmt.Printf("\033[F \t %s > %s\n", ss, scanner.Text())
+				fmt.Printf("\033[F \t %s.| %s > %s\n", position, vidLink, scanner.Text())
 			}
 		}
-	}(v.link)
+	}(v.link, v.counter)
 
 	err = cmd.Start()
 	if err != nil {
@@ -416,27 +419,30 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel 
 
 	for v := range videoChannel {
 		processVideosCounter.increment()
-		fmt.Printf("  Processing video %s/%d: %s | %s\n\n", processVideosCounter.getValueAsString(), allVideosCount, v.videoName, v.link)
+
+		v.counter = processVideosCounter.getValueAsString()
+
+		fmt.Printf("  Processing video %s/%d: %s | %s\n\n", v.counter, allVideosCount, v.videoName, v.link)
 		if v.hasError == false {
-			time.Sleep(4 * time.Second)
+			time.Sleep(2 * time.Second)
 			v.downloadVideoIndexesFiles()
 
-			if v.hasError == false {
-
+			if !v.hasError {
 				v.getMp3()
-				v.removeVideo()
-				v = moveFile(v)
+
+				if !v.hasError {
+					v.removeVideo()
+					v.moveFile()
+					fmt.Printf("  Success:  %s/%d: %s | %s\n\n", v.counter, allVideosCount, v.videoName, v.link)
+				}
 			}
 
-			if v.hasError == true {
-				errorChannel <- v
-			}
+			errorChannel <- v
 		}
 	}
-
 }
 
-func moveFile(v video) video {
+func (v *video) moveFile() {
 	moveToDir := ""
 	nameOfFile := ""
 
@@ -473,8 +479,6 @@ func moveFile(v video) video {
 			v.setError("Moving mp3 file failed for file:", errMoveMp3)
 		}
 	}
-
-	return v
 }
 
 // fix the cross-device error for external disks
@@ -721,7 +725,11 @@ func main() {
 
 	if err != nil {
 		core.LogError(err, "Fail to load list file.")
-		//TODO print help here
+		fmt.Println(`example of list.txt: 
+[[
+https://www.youtube.com/watch?v=0Q8-FSlWHZg m musicFolder
+https://www.youtube.com/watch?v=tBjyOENZnmo v videoFolder
+]]`)
 		os.Exit(1)
 	}
 
@@ -743,6 +751,8 @@ func processErrors(wg *sync.WaitGroup, errorChannel chan video) {
 			}
 
 			fmt.Println(v.err)
+			fmt.Println(v.errMsg)
+			fmt.Println(v.err.Error())
 			v.printMe()
 		}
 	}

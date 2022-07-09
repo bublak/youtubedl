@@ -130,34 +130,38 @@ func (v *video) getFullMp3Name() string {
 
 func (v *video) getMp3() {
 
-	if v.createMp3 == true {
-		var fullName = v.getFullName()
-		fmt.Printf("create mp3 %s.| %s+ \n\n", v.counter, fullName)
+	if v.createMp3 == false {
+		return
+	}
 
-		if !core.FileExists(fullName) {
-			v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
+	var fullName = v.getFullName()
+	fmt.Printf("create mp3 %s.| %s+ \n\n", v.counter, fullName)
+
+	if !core.FileExists(fullName) {
+		v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
+		return
+	}
+
+	if !core.FileExists(v.getFullMp3Name()) {
+		var quality string
+
+		if v.musicIndex == "22" {
+			//.mp4
+			quality = "192k"
+
+		} else if v.musicIndex == "251" {
+			//.webm
+			quality = "160k"
+		} else {
+			v.setError("Create of mp3 file failed: missing part for quality of result mp3, definition of index", nil)
+			return
 		}
 
-		if !core.FileExists(v.getFullMp3Name()) {
-			var quality string
+		errCreateMp3 := createMp3(quality, fullName, v.videoName)
 
-			if v.musicIndex == "22" {
-				//.mp4
-				quality = "192k"
-
-			} else if v.musicIndex == "251" {
-				//.webm
-				quality = "160k"
-			} else {
-				v.setError("Create of mp3 file failed: missing part for quality of result mp3, definition of index", nil)
-				return
-			}
-
-			errCreateMp3 := createMp3(quality, fullName, v.videoName)
-
-			if errCreateMp3 != nil {
-				v.setError("Create of mp3 file failed: ffmpeg convert.", errCreateMp3)
-			}
+		if errCreateMp3 != nil {
+			v.setError("Create of mp3 file failed: ffmpeg convert.", errCreateMp3)
+			return
 		}
 	}
 }
@@ -195,7 +199,7 @@ func (v *video) downloadVideoIndexesFiles() {
 	}
 
 	if downloadErrorVideoIndex != nil {
-		fmt.Printf("\n Error download of videoIndex %s (%s)!\n", videoFullName, v.link)
+		fmt.Printf("\n Error download of videoIndex %s.| %s (%s)!\n", v.counter, videoFullName, v.link)
 	}
 
 	if v.createMp3 && v.ytVideoOptions.videoIndex != v.ytVideoOptions.musicIndex {
@@ -203,7 +207,7 @@ func (v *video) downloadVideoIndexesFiles() {
 	}
 
 	if downloadErrorMusicIndex != nil {
-		fmt.Printf("\n  Error download of musicIndex %s (%s)!\n", videoFullName, v.link)
+		fmt.Printf("\n  Error download of musicIndex %s.| %s (%s)!\n", v.counter, videoFullName, v.link)
 	}
 
 	if downloadErrorMusicIndex == nil && downloadErrorVideoIndex == nil {
@@ -527,11 +531,11 @@ func loadVideoList(videoList []video) ([]video, error) {
 	for scanner.Scan() {
 		v, err := parseLine(scanner.Text())
 
-		if err == nil {
-			videoList = append(videoList, v)
-		} else if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
+		if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
 			return nil, err
 		}
+
+		videoList = append(videoList, v)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -750,10 +754,10 @@ func processErrors(wg *sync.WaitGroup, errorChannel chan video) {
 				firstErr = false
 			}
 
-			fmt.Println(v.err)
 			fmt.Println(v.errMsg)
 			fmt.Println(v.err.Error())
 			v.printMe()
+			fmt.Println()
 		}
 	}
 }
@@ -829,11 +833,11 @@ func parseVideoHTML(videoList []video) ([]video, error) {
 
 					v, err := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
 
-					if err == nil {
-						videoList = appendIfMissing(videoList, v)
-					} else if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
+					if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
 						return nil, err
 					}
+
+					videoList = appendIfMissing(videoList, v)
 
 				}
 			}
@@ -878,7 +882,6 @@ func parseListHTML(videoList []video) ([]video, error) {
 					lastChar := substring[len(substring):]
 
 					if lastChar == "\"" || lastChar == "&" {
-
 						unknownURL := errors.New(substring + " is not known url for parsing")
 						return nil, unknownURL
 					}
@@ -888,11 +891,11 @@ func parseListHTML(videoList []video) ([]video, error) {
 
 					v, err := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
 
-					if err == nil {
-						videoList = appendIfMissing(videoList, v)
-					} else if _, ok := err.(*ERR_PARSE_EMPTY); ok == false {
+					if _, ok := err.(*ERR_PARSE_EMPTY); ok == false {
 						return nil, err
 					}
+
+					videoList = appendIfMissing(videoList, v)
 				}
 			}
 		}

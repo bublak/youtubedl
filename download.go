@@ -230,7 +230,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 
 	go func(vidLink string, position string) {
 		var counter int = 0
-		fmt.Printf("\n") // this line will be removed with output
+		fmt.Printf("\n") // this line will be overwritten with output
 		for scanner.Scan() {
 			counter++
 			if counter%10 == 0 {
@@ -248,7 +248,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 
 	err = cmd.Wait()
 	if err != nil {
-		// TODO je tu mozny download zrestartovat ???
+		// TODO is it helpful to restart download here?
 		fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
 		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
 		return err
@@ -764,9 +764,9 @@ func processResults(wg *sync.WaitGroup, statusChannel chan video) {
 			fmt.Printf("%s| %s\n", v.counter, v.err.Error())
 			v.printMe()
 			fmt.Println()
-			errList = append(errList, fmt.Sprintf("  Success:  %s| %s | %s\n", v.counter, v.link, v.videoName))
+			errList = append(errList, fmt.Sprintf("  Error:  %s| %s | %s\n", v.counter, v.parsingLine, v.videoName))
 		} else {
-			okList = append(okList, fmt.Sprintf("  Error:  %s| %s | %s\n", v.counter, v.link, v.videoName))
+			okList = append(okList, fmt.Sprintf("  Success:  %s| %s | %s\n", v.counter, v.link, v.videoName))
 		}
 	}
 

@@ -418,7 +418,7 @@ func (counter *incCounter) getValueAsString() string {
 	return strconv.Itoa(counter.c)
 }
 
-func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel chan video) {
+func processVideoList(wg *sync.WaitGroup, videoChannel chan video, statusChannel chan video) {
 	defer wg.Done()
 
 	for v := range videoChannel {
@@ -441,8 +441,9 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, errorChannel 
 				}
 			}
 
-			errorChannel <- v
 		}
+
+		statusChannel <- v
 	}
 }
 
@@ -531,8 +532,10 @@ func loadVideoList(videoList []video) ([]video, error) {
 	for scanner.Scan() {
 		v, err := parseLine(scanner.Text())
 
-		if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
-			return nil, err
+		if err != nil {
+			if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
+				return nil, err
+			}
 		}
 
 		videoList = append(videoList, v)
@@ -742,40 +745,56 @@ https://www.youtube.com/watch?v=tBjyOENZnmo v videoFolder
 	// TODO: delete list.txt content
 }
 
-func processErrors(wg *sync.WaitGroup, errorChannel chan video) {
+func processResults(wg *sync.WaitGroup, statusChannel chan video) {
 	defer wg.Done()
 
 	firstErr := true
 
-	for v := range errorChannel {
+	var errList []string
+	var okList []string
+
+	for v := range statusChannel {
 		if v.hasError == true {
 			if firstErr {
 				fmt.Println("\n\nErrors:")
 				firstErr = false
 			}
 
-			fmt.Println(v.errMsg)
-			fmt.Println(v.err.Error())
+			fmt.Printf("%s| %s\n", v.counter, v.errMsg)
+			fmt.Printf("%s| %s\n", v.counter, v.err.Error())
 			v.printMe()
 			fmt.Println()
+			errList = append(errList, fmt.Sprintf("  Success:  %s| %s | %s\n", v.counter, v.link, v.videoName))
+		} else {
+			okList = append(okList, fmt.Sprintf("  Error:  %s| %s | %s\n", v.counter, v.link, v.videoName))
 		}
 	}
+
+	for v := range okList {
+		fmt.Println(v)
+	}
+	fmt.Println("----------------------")
+
+	for v := range errList {
+		fmt.Println(v)
+	}
+
 }
 
 func doWork(videoList []video) {
 
 	videoChannel := make(chan video)
-	errorChannel := make(chan video)
+	statusChannel := make(chan video)
 
 	wgProcess := new(sync.WaitGroup)
 	wgError := new(sync.WaitGroup)
 
 	wgError.Add(1)
-	go processErrors(wgError, errorChannel)
+	go processResults(wgError, statusChannel)
 
 	for i := 0; i < numberOfProcesses; i++ {
 		wgProcess.Add(1)
-		go processVideoList(wgProcess, videoChannel, errorChannel)
+		go processVideoList(wgProcess, videoChannel, statusChannel)
 	}
 
 	for index := 0; index < len(videoList); index++ {
@@ -787,7 +806,7 @@ func doWork(videoList []video) {
 	close(videoChannel)
 	wgProcess.Wait()
 
-	close(errorChannel)
+	close(statusChannel)
 	wgError.Wait()
 
 }
@@ -833,12 +852,13 @@ func parseVideoHTML(videoList []video) ([]video, error) {
 
 					v, err := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
 
-					if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
-						return nil, err
+					if err != nil {
+						if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
+							return nil, err
+						}
 					}
 
 					videoList = appendIfMissing(videoList, v)
-
 				}
 			}
 		}
@@ -891,8 +911,10 @@ func parseListHTML(videoList []video) ([]video, error) {
 
 					v, err := parseLine(videoURL + " " + typeVideo + " " + listHTMLFolder)
 
-					if _, ok := err.(*ERR_PARSE_EMPTY); ok == false {
-						return nil, err
+					if err != nil {
+						if _, ok := err.(*ERR_PARSE_EMPTY); ok == false {
+							return nil, err
+						}
 					}
 
 					videoList = appendIfMissing(videoList, v)

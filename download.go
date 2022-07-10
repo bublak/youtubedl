@@ -770,12 +770,12 @@ func processResults(wg *sync.WaitGroup, statusChannel chan video) {
 		}
 	}
 
-	for v := range okList {
+	for _, v := range okList {
 		fmt.Println(v)
 	}
 	fmt.Println("----------------------")
 
-	for v := range errList {
+	for _, v := range errList {
 		fmt.Println(v)
 	}
 

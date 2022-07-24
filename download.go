@@ -533,9 +533,11 @@ func loadVideoList(videoList []video) ([]video, error) {
 		v, err := parseLine(scanner.Text())
 
 		if err != nil {
-			if _, ok := err.(ERR_PARSE_EMPTY); ok == false {
-				return nil, err
+			if _, ok := err.(ERR_PARSE_EMPTY); ok {
+				continue
 			}
+
+			return nil, err
 		}
 
 		videoList = append(videoList, v)
@@ -623,7 +625,6 @@ func parseLine(line string) (v video, err error) {
 
 			}
 		}
-
 	}
 
 	return v, nil

@@ -1,7 +1,24 @@
 // Go
 //
-//  Get mp3 from list of youtube links.
+//  Create mp3 from list of youtube links.
 //  Trying to obtain best quality, and then lowering, if better not existing.
+
+//
+//  OS: linux, macosx
+//  !keep python3 /usr/local/bin/youtube-dl updated
+//
+//  usage: create file list.txt and put youtube links inside, one link per line:
+//
+//  https://www.youtube.com/watch?v=r0hirs3zrDI OPTION FOLDER_NAME OUTPUT FILE NAME
+//
+//  example list.txt:
+//  	https://www.youtube.com/watch?v=u3m2kQ-tOEk
+//  	https://www.youtube.com/watch?v=kkJtHXfRH74&list=WL&index=24&t=0s m
+//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v
+//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v newFolder
+//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v FolderKeyDefinedInSettingsFile
+//	https://www.youtube.com/watch?v=mKf1x3CALAE m FolderName Horace Silver - Song For My Father
+//
 //
 //   Options:
 //				m only mp3
@@ -9,21 +26,9 @@
 //				no option || b Keep both (video and mp3) (DEFAULT)
 //
 //
-//
-//  OS: linux, macosx
-//  !keep python3 /usr/local/bin/youtube-dl updated
-//
-//  usage: create file list.txt and put youtube links inside, one link per line, example:
-//  list.txt:
-//  	https://www.youtube.com/watch?v=u3m2kQ-tOEk
-//  	https://www.youtube.com/watch?v=kkJtHXfRH74&list=WL&index=24&t=0s m
-//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v
-//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v newFolder
-//  	https://www.youtube.com/watch?v=qGyPuey-1Jw v FolderKeyDefinedInSettingsFile
-//
 //  @requrired python3 /usr/local/bin/youtube-dl, ffmpeg
 //  @author    Pavel Filipcik
-//  @year      2017-2021
+//  @year      2017-2022
 
 package main
 
@@ -353,12 +358,12 @@ func getExtensionFromYtIndexLine(line string) (extension string) {
 }
 
 func loadVideoNames(v video) video {
-	if v.hasError == false {
+	if v.hasError == false && v.videoName == "" {
 		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-e", v.link)
 		out, errCO := cmd.CombinedOutput()
 
 		if errCO != nil {
-			core.LogError(errCO, "cmd.Run() failed with")
+			core.LogError(errCO, "cmd.Run() for name failed with")
 		}
 
 		bufferOutput := string(out)
@@ -366,6 +371,7 @@ func loadVideoNames(v video) video {
 		bufferOutput = core.CleanCharactersFromString(bufferOutput)
 		v.videoName = bufferOutput
 	}
+
 	return v
 }
 
@@ -627,6 +633,16 @@ func parseLine(line string) (v video, err error) {
 		}
 	}
 
+	if len(subParts) > 3 {
+		var specName string
+		for i := 3; i < len(subParts); i++ {
+			specName = specName + subParts[i] + "_"
+
+		}
+
+		v.videoName = specName[:len(specName)-1]
+	}
+
 	return v, nil
 }
 
@@ -736,7 +752,7 @@ func main() {
 		fmt.Println(`example of list.txt: 
 [[
 https://www.youtube.com/watch?v=0Q8-FSlWHZg m musicFolder
-https://www.youtube.com/watch?v=tBjyOENZnmo v videoFolder
+https://www.youtube.com/watch?v=tBjyOENZnmo v videoFolder name of video
 ]]`)
 		os.Exit(1)
 	}

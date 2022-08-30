@@ -1,8 +1,8 @@
 // Go
 //
-//  Create mp3 from list of youtube links.
-//  Trying to obtain best quality, and then lowering, if better not existing.
-
+//  Wrapper for youtube-dl. Can create also mp3 from list of youtube links.
+//  Usage: 1.) prepare list of youtube videos with requested output (video/ mp3) 2.) run
+//  Program is trying to obtain suitable quality, and then lowering, if better not existing.
 //
 //  OS: linux, macosx
 //  !keep python3 /usr/local/bin/youtube-dl updated
@@ -25,8 +25,10 @@
 //				v only video
 //				no option || b Keep both (video and mp3) (DEFAULT)
 //
+// == Build & run ==
+//  go build; ./youtube
 //
-//  @requrired python3 /usr/local/bin/youtube-dl, ffmpeg
+//  @requrired python3, /usr/local/bin/youtube-dl, ffmpeg, and for build golang 1.18
 //  @author    Pavel Filipcik
 //  @year      2017-2022
 
@@ -38,8 +40,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,6 +76,8 @@ const (
 )
 
 var folders map[string]string
+
+var statusChannel chan video
 
 type ytVideoOptions struct {
 	musicIndex string
@@ -434,7 +440,6 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, statusChannel
 
 		fmt.Printf("  Processing video %s/%d: %s | %s\n\n", v.counter, allVideosCount, v.videoName, v.link)
 		if v.hasError == false {
-			time.Sleep(2 * time.Second)
 			v.downloadVideoIndexesFiles()
 
 			if !v.hasError {
@@ -640,7 +645,7 @@ func parseLine(line string) (v video, err error) {
 
 		}
 
-		v.videoName = specName[:len(specName)-1]
+		v.videoName = core.CleanCharactersFromString(specName)
 	}
 
 	return v, nil
@@ -697,6 +702,20 @@ func loadSettings() {
 var allVideosCount int
 
 func main() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		log.Println("Program killed!")
+		// small chance, someone will write into status channel when its closed -> panic
+		// will not happen, if videos are downloading
+		close(statusChannel)
+
+		time.Sleep(10*time.Millisecond) // get some time, for printing results
+		
+		os.Exit(0)
+	}()
+
 	loadSettings()
 
 	videoList = []video{}
@@ -801,7 +820,7 @@ func processResults(wg *sync.WaitGroup, statusChannel chan video) {
 func doWork(videoList []video) {
 
 	videoChannel := make(chan video)
-	statusChannel := make(chan video)
+	statusChannel = make(chan video)
 
 	wgProcess := new(sync.WaitGroup)
 	wgError := new(sync.WaitGroup)

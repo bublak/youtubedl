@@ -7,6 +7,7 @@
 //  OS: linux, macosx
 //  !keep python3 /usr/local/bin/youtube-dl updated
 //
+//  Before usage, set in settings.json path, where files will be downloaded:   "root": "/Users/PATH/downloads",
 //  usage: create file list.txt and put youtube links inside, one link per line:
 //
 //  https://www.youtube.com/watch?v=r0hirs3zrDI OPTION FOLDER_NAME OUTPUT FILE NAME

@@ -53,10 +53,10 @@ import (
 )
 
 var listFileNamePath = "list.txt"
-var videoHTMLpagePath = "videolisthtml.txt"
-var videoHTMLpagePathLoaded = "videolisthtml.txt_d"
 
-var listHTMLpagePath = "/Volumes/Pavel/work/codes/youtubedl/playlisthtml.txt"
+const listHTMLAlbumSeparator = "**startnew**"
+
+var listHTMLpagePath = "playlisthtml.txt"
 var listHTMLpagePathLoaded = "playlisthtml.txt_d"
 
 const (
@@ -86,32 +86,19 @@ type ytVideoOptions struct {
 }
 
 type video struct {
-	counter        string
-	hasError       bool
-	err            error
-	errMsg         string
-	link           string
-	createMp3      bool
-	keepVideo      bool
-	videoFilePath  string
-	mp3FilePath    string
-	parsingLine    string
-	videoName      string
-	videoExtension string
-	moveDir        string
+	counter            string
+	hasError           bool
+	err                error
+	errMsg             string
+	link               string
+	createMp3          bool
+	keepVideo          bool
+	parsingLine        string
+	videoName          string
+	videoAlbumPosition int
+	videoExtension     string
+	moveDir            string
 	ytVideoOptions
-}
-
-func (v *video) initVideo() {
-	v.hasError = false
-	v.errMsg = ""
-	v.err = nil
-	v.link = ""
-	v.createMp3 = false
-	v.keepVideo = false
-	v.videoFilePath = ""
-	v.mp3FilePath = ""
-	v.moveDir = ""
 }
 
 func (v *video) printMe() {
@@ -132,16 +119,30 @@ func (v *video) setError(msg string, err error) {
 
 var videoList = []video{}
 
+func printVideoList(videoList []video) {
+	for _, v := range videoList {
+		fmt.Println(v.parsingLine, ", ", v.getFullName())
+	}
+}
+
+func (v *video) getAlbumNamePosition() string {
+	if v.videoAlbumPosition == 0 {
+		return ""
+	}
+
+	//TODO there is not knowledge about count of videos belongs to album, now formating for 2 places
+	return fmt.Sprintf("%02d-", v.videoAlbumPosition)
+}
+
 func (v *video) getFullName() string {
-	return v.videoName + "-" + v.videoIndex + "." + v.videoExtension
+	return v.getAlbumNamePosition() + v.videoName + "-" + v.videoIndex + "." + v.videoExtension
 }
 
 func (v *video) getFullMp3Name() string {
-	return v.videoName + ".mp3"
+	return v.getAlbumNamePosition() + v.videoName + ".mp3"
 }
 
 func (v *video) getMp3() {
-
 	if v.createMp3 == false {
 		return
 	}
@@ -169,7 +170,7 @@ func (v *video) getMp3() {
 			return
 		}
 
-		errCreateMp3 := createMp3(quality, fullName, v.videoName)
+		errCreateMp3 := createMp3(quality, fullName, v.getFullMp3Name())
 
 		if errCreateMp3 != nil {
 			v.setError("Create of mp3 file failed: ffmpeg convert.", errCreateMp3)
@@ -178,19 +179,19 @@ func (v *video) getMp3() {
 	}
 }
 
-func createMp3(quality string, fullName string, videoName string) error {
+func createMp3(quality string, fullName string, outputMp3Name string) error {
 
-	cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-acodec", "mp3", "-ab", quality, "-ar", "44100", "-ac", "2", "-map", "a", videoName+".mp3")
+	cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-acodec", "mp3", "-ab", quality, "-ar", "44100", "-ac", "2", "-map", "a", outputMp3Name)
 	out, errCO := cmd.CombinedOutput()
 
 	if errCO != nil {
 		return errCO
 	}
 
-	if !core.FileExists(videoName + ".mp3") {
+	if !core.FileExists(outputMp3Name) {
 		outp := string(out)
 		// should not happen, maybe full disk?
-		errMsg := fmt.Sprintf("Mp3 file was not created: %s, fullName: %s, vidoname: %s \n output: %s \n", quality, fullName, videoName, outp)
+		errMsg := fmt.Sprintf("Mp3 file was not created: %s, fullName: %s, vidoname: %s \n output: %s \n", quality, fullName, outputMp3Name, outp)
 
 		return errors.New(errMsg)
 	}
@@ -751,7 +752,6 @@ https://www.youtube.com/watch?v=tBjyOENZnmo v videoFolder name of video
 }
 
 func loadListFromFiles(videoList []video) ([]video, error) {
-
 	var fileName = listHTMLpagePath
 	if core.FileExists(listHTMLpagePath) {
 		var err error
@@ -794,9 +794,9 @@ func processResults(wg *sync.WaitGroup, statusChannel chan video) {
 			fmt.Printf("%s| %s\n", v.counter, v.err.Error())
 			v.printMe()
 			fmt.Println()
-			errList = append(errList, fmt.Sprintf("  Error:  %s| %s | %s\n", v.counter, v.parsingLine, v.videoName))
+			errList = append(errList, fmt.Sprintf("  Error:  %s| %s %s\n", v.counter, v.parsingLine, v.getFullName()))
 		} else {
-			okList = append(okList, fmt.Sprintf("  Success:  %s| %s | %s\n", v.counter, v.link, v.videoName))
+			okList = append(okList, fmt.Sprintf("  Success:  %s| %s %s\n", v.counter, v.link, v.getFullName()))
 		}
 	}
 
@@ -860,10 +860,18 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 	var downloadType string
 	var outputFolder string
 	var counter int = 0
+	var albumPosition int = 1
+	var isChange = false
 
 	for scanner.Scan() {
 		counter++
 		line := scanner.Text()
+
+		if strings.Contains(line, listHTMLAlbumSeparator) {
+			counter = 0
+			albumPosition = 1
+			continue
+		}
 
 		if counter == 1 {
 			downloadType = strings.Trim(line, " ")
@@ -906,7 +914,12 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 						}
 					}
 
-					videoList = appendIfMissing(videoList, v)
+					v.videoAlbumPosition = albumPosition
+					videoList, isChange = appendIfMissing(videoList, v)
+
+					if isChange {
+						albumPosition++
+					}
 				}
 			}
 		}
@@ -919,12 +932,12 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 	return videoList, nil
 }
 
-func appendIfMissing(list []video, v video) []video {
+func appendIfMissing(list []video, v video) ([]video, bool) {
 	for _, elInSlice := range list {
 		if elInSlice.link == v.link {
-			return list
+			return list, false
 		}
 	}
 
-	return append(list, v)
+	return append(list, v), true
 }

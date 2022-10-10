@@ -137,7 +137,7 @@ func (v *video) getAlbumNamePosition() string {
 
 func (v *video) getAuthorName() string {
 	if v.authorName != "" {
-		return v.authorName + "XX-"
+		return v.authorName + "-"
 	}
 
 	return ""

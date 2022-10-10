@@ -56,7 +56,7 @@ var listFileNamePath = "list.txt"
 
 const listHTMLAlbumSeparator = "**startnew**"
 
-var listHTMLpagePath = "playlisthtml.txt"
+var listHTMLpagePath = "/Volumes/Pavel/work/codes/youtubedl/playlisthtml.txt"
 var listHTMLpagePathLoaded = "playlisthtml.txt_d"
 
 const (
@@ -95,6 +95,7 @@ type video struct {
 	keepVideo          bool
 	parsingLine        string
 	videoName          string
+	authorName         string
 	videoAlbumPosition int
 	videoExtension     string
 	moveDir            string
@@ -134,12 +135,20 @@ func (v *video) getAlbumNamePosition() string {
 	return fmt.Sprintf("%02d-", v.videoAlbumPosition)
 }
 
+func (v *video) getAuthorName() string {
+	if v.authorName != "" {
+		return v.authorName + "XX-"
+	}
+
+	return ""
+}
+
 func (v *video) getFullName() string {
-	return v.getAlbumNamePosition() + v.videoName + "-" + v.videoIndex + "." + v.videoExtension
+	return v.getAlbumNamePosition() + v.getAuthorName() + v.videoName + "-" + v.videoIndex + "." + v.videoExtension
 }
 
 func (v *video) getFullMp3Name() string {
-	return v.getAlbumNamePosition() + v.videoName + ".mp3"
+	return v.getAlbumNamePosition() + v.getAuthorName() + v.videoName + ".mp3"
 }
 
 func (v *video) getMp3() {
@@ -859,6 +868,7 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 
 	var downloadType string
 	var outputFolder string
+	var authorName string
 	var counter int = 0
 	var albumPosition int = 1
 	var isChange = false
@@ -870,6 +880,9 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 		if strings.Contains(line, listHTMLAlbumSeparator) {
 			counter = 0
 			albumPosition = 1
+			authorName = ""
+			outputFolder = ""
+
 			continue
 		}
 
@@ -885,6 +898,11 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 				return nil, fmt.Errorf("Missing outputfolder %s", fileName)
 			}
 			continue
+		}
+
+		if counter == 3 {
+			authorName = strings.Trim(line, " ")
+			authorName = core.CleanCharactersFromString(authorName)
 		}
 
 		if len(line) > 1 && strings.Contains(line, "yt-simple-endpoint") {
@@ -915,6 +933,7 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 					}
 
 					v.videoAlbumPosition = albumPosition
+					v.authorName = authorName
 					videoList, isChange = appendIfMissing(videoList, v)
 
 					if isChange {

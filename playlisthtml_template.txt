@@ -1,0 +1,6 @@
+**startnew**
+type, what to create of playlist {{m}}
+Folder name {{AuthorX - Album name}}
+Author name, used for file names, if its not provided in youtube playlist, or empty {{AuthorX}}
+
+html of playlists

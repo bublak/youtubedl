@@ -1,11 +1,12 @@
 // Go
 //
-//  Wrapper for youtube-dl. Can create also mp3 from list of youtube links.
+//  Wrapper for yt-dlp. Can create also mp3 from list of youtube links.
 //  Usage: 1.) prepare list of youtube videos with requested output (video/ mp3) 2.) run
 //  Program is trying to obtain suitable quality, and then lowering, if better not existing.
 //
 //  OS: linux, macosx
-//  !keep python3 /usr/local/bin/youtube-dl updated
+//  !keep yt-dlp updated
+//  install: brew install yt-dlp
 //
 //  Before usage, set in settings.json path, where files will be downloaded:   "root": "/Users/PATH/downloads",
 //  usage: create file list.txt and put youtube links inside, one link per line:
@@ -29,7 +30,7 @@
 // == Build & run ==
 //  go build; ./youtube
 //
-//  @requrired python3, /usr/local/bin/youtube-dl, ffmpeg, and for build golang 1.18
+//  @requrired yt-dlp, ffmpeg, and for build golang 1.19
 //  @author    Pavel Filipcik
 //  @year      2017-2022
 
@@ -152,7 +153,7 @@ func (v *video) getFullMp3Name() string {
 }
 
 func (v *video) getMp3() {
-	if v.createMp3 == false {
+	if !v.createMp3 {
 		return
 	}
 
@@ -238,12 +239,12 @@ func (v *video) downloadVideoIndexesFiles() {
 }
 
 func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
-	cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "--newline", "-f", index, "-o", fullName, link)
+	cmd := exec.Command("yt-dlp", "--newline", "-f", index, "-o", fullName, link)
 
 	// create a pipe for the output of the script
 	cmdReader, err := cmd.StdoutPipe()
 	if err != nil {
-		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
+		v.setError("Command yt-dlp failed with: ", err)
 		fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for Cmd", err)
 		return err
 	}
@@ -264,7 +265,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 	err = cmd.Start()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error starting Cmd", err)
-		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
+		v.setError("Command yt-dlp failed with: ", err)
 		return err
 	}
 
@@ -272,7 +273,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 	if err != nil {
 		// TODO is it helpful to restart download here?
 		fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
-		v.setError("Command python3 /usr/local/bin/youtube-dl failed with: ", err)
+		v.setError("Command yt-dlp failed with: ", err)
 		return err
 	}
 
@@ -280,7 +281,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 }
 
 func (v *video) removeVideo() {
-	if v.hasError == false && v.keepVideo == false {
+	if !v.hasError && !v.keepVideo {
 		fullName := v.getFullName()
 		fmt.Println("Delete video: ", fullName)
 		removeErr := os.Remove(fullName)
@@ -309,7 +310,7 @@ func (v *video) getBestQualityVideo(output string) (hasAudioSource bool, err err
 				return true, nil
 			}
 
-			if v.keepVideo == true {
+			if v.keepVideo {
 				splitedLine := strings.Split(line, " ")
 				videoIndex := strings.TrimSpace(splitedLine[0])
 
@@ -375,8 +376,9 @@ func getExtensionFromYtIndexLine(line string) (extension string) {
 }
 
 func loadVideoNames(v video) video {
-	if v.hasError == false && v.videoName == "" {
-		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-e", v.link)
+	if !v.hasError && v.videoName == "" {
+		cmd := exec.Command("yt-dlp", "-e", v.link)
+
 		out, errCO := cmd.CombinedOutput()
 
 		if errCO != nil {
@@ -393,8 +395,8 @@ func loadVideoNames(v video) video {
 }
 
 func loadVideoOptions(v video) video {
-	if v.hasError == false {
-		cmd := exec.Command("python3", "/usr/local/bin/youtube-dl", "-F", v.link)
+	if !v.hasError {
+		cmd := exec.Command("yt-dlp", "--compat-options", "list-formats", "-F", v.link)
 		out, errCO := cmd.CombinedOutput()
 
 		if errCO != nil {
@@ -408,7 +410,7 @@ func loadVideoOptions(v video) video {
 			v.setError("bestquality failed with", errVideo)
 		}
 
-		if v.createMp3 && hasAudioSource == false {
+		if v.createMp3 && !hasAudioSource {
 			errAudio := v.getBestQualityAudio(bufferOutput)
 
 			if errAudio != nil {
@@ -450,7 +452,7 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, statusChannel
 		v.counter = processVideosCounter.getValueAsString()
 
 		fmt.Printf("  Processing video %s/%d: %s | %s\n\n", v.counter, allVideosCount, v.videoName, v.link)
-		if v.hasError == false {
+		if !v.hasError {
 			v.downloadVideoIndexesFiles()
 
 			if !v.hasError {
@@ -578,9 +580,7 @@ func parseLine(line string) (v video, err error) {
 		return v, ERR_PARSE_EMPTY{}
 	}
 
-	var subParts []string
-
-	subParts = strings.Split(line, " ")
+	var subParts []string = strings.Split(line, " ")
 
 	var vURL string
 	var typeFlag string
@@ -595,7 +595,7 @@ func parseLine(line string) (v video, err error) {
 	if len(subParts) > 0 {
 		vURL = subParts[0]
 
-		if strings.HasPrefix(vURL, youtubeURLFull) == false && strings.HasPrefix(vURL, youtubeURL) == false {
+		if !strings.HasPrefix(vURL, youtubeURLFull) && !strings.HasPrefix(vURL, youtubeURL) {
 			v.setError(fmt.Sprintf("Parsing url failed for video line: %s, expecting url starts as %s or %s", vURL, youtubeURLFull, youtubeURL), nil)
 		}
 
@@ -768,7 +768,7 @@ func loadListFromFiles(videoList []video) ([]video, error) {
 		videoList, err = parseListHTML(fileName, videoList)
 
 		if err != nil {
-			return nil, fmt.Errorf("Fail to parse html txt list %s, error: %s", fileName, err.Error())
+			return nil, fmt.Errorf("fail to parse html txt list %s, error: %s", fileName, err.Error())
 		}
 
 		if len(videoList)-origLength > 0 {
@@ -776,7 +776,7 @@ func loadListFromFiles(videoList []video) ([]video, error) {
 			time.Sleep(1 * time.Second)
 			err = moveWrapper(listHTMLpagePath, listHTMLpagePathLoaded)
 			if err != nil {
-				return nil, fmt.Errorf("Can not move file %s, error: %s", fileName, err.Error())
+				return nil, fmt.Errorf("can not move file %s, error: %s", fileName, err.Error())
 			}
 		}
 	}
@@ -793,7 +793,7 @@ func processResults(wg *sync.WaitGroup, statusChannel chan video) {
 	var okList []string
 
 	for v := range statusChannel {
-		if v.hasError == true {
+		if v.hasError {
 			if firstErr {
 				fmt.Println("\n\nErrors:")
 				firstErr = false
@@ -895,7 +895,7 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 			outputFolder = strings.Trim(line, " ")
 			outputFolder = core.CleanCharactersFromString(outputFolder)
 			if len(outputFolder) == 0 {
-				return nil, fmt.Errorf("Missing outputfolder %s", fileName)
+				return nil, fmt.Errorf("missing outputfolder %s", fileName)
 			}
 			continue
 		}
@@ -927,7 +927,7 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 					v, err := parseLine(videoURL + " " + downloadType + " " + outputFolder)
 
 					if err != nil {
-						if _, ok := err.(*ERR_PARSE_EMPTY); ok == false {
+						if _, ok := err.(*ERR_PARSE_EMPTY); !ok {
 							return nil, err
 						}
 					}

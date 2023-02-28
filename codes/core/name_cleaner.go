@@ -20,6 +20,7 @@ func CleanCharactersFromString(str string) (cleanedString string) {
 	cleanedString = strings.ReplaceAll(cleanedString, "|", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "]", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "/", "_")
+	cleanedString = strings.ReplaceAll(cleanedString, "`", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "@", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "#", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, ":", "_")

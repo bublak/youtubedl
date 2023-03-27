@@ -20,6 +20,8 @@
 //  	https://www.youtube.com/watch?v=qGyPuey-1Jw v newFolder
 //  	https://www.youtube.com/watch?v=qGyPuey-1Jw v FolderKeyDefinedInSettingsFile
 //	https://www.youtube.com/watch?v=mKf1x3CALAE m FolderName Horace Silver - Song For My Father
+//    [empty folder name (.) + author name (if song file name does not have - char, its used only as author name, rest is loaded from youtube title)]
+//    https://www.youtube.com/watch?v=eCG7RuI-80M m . The Church
 //
 //
 //   Options:
@@ -630,7 +632,7 @@ func parseLine(line string) (v video, err error) {
 		// folder process
 		folderFlag = strings.TrimSpace(subParts[2])
 
-		if folderFlag != "" {
+		if folderFlag != "" && folderFlag != "." {
 			if val, ok := folders[folderFlag]; ok && val != "" {
 				v.moveDir = val
 			} else {
@@ -656,7 +658,16 @@ func parseLine(line string) (v video, err error) {
 
 		}
 
-		v.videoName = core.CleanCharactersFromString(specName)
+		specName = core.CleanCharactersFromString(specName)
+
+		if !strings.Contains(specName, "-") {
+			// only author name
+			v.authorName = specName
+		} else {
+			// whole song name with author
+			v.videoName = specName
+		}
+
 	}
 
 	return v, nil

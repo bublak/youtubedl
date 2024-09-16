@@ -32,9 +32,9 @@
 // == Build & run ==
 //  go build; ./youtube
 //
-//  @requrired yt-dlp, ffmpeg, and for build golang 1.19
+//  @requrired yt-dlp, ffmpeg, and for build golang 1.22
 //  @author    Pavel Filipcik
-//  @year      2017-2022
+//  @year      2017-2024
 
 package main
 
@@ -59,7 +59,7 @@ var listFileNamePath = "list.txt"
 
 const listHTMLAlbumSeparator = "**startnew**"
 
-var listHTMLpagePath = "/Volumes/Pavel/work/codes/youtubedl/playlisthtml.txt"
+var listHTMLpagePath = "/Users/pavelfilipcik/mywork/codes/youtubedl/playlisthtml.txt"
 var listHTMLpagePathLoaded = "playlisthtml.txt_d"
 
 const (
@@ -151,7 +151,7 @@ func (v *video) getFullName() string {
 }
 
 func (v *video) getFullMp3Name() string {
-	return v.getAlbumNamePosition() + v.getAuthorName() + v.videoName + ".mp3"
+	return v.getAlbumNamePosition() + v.getAuthorName() + v.videoName + "_b.mp3"
 }
 
 func (v *video) getMp3() {
@@ -172,7 +172,7 @@ func (v *video) getMp3() {
 
 		if v.musicIndex == "22" {
 			//.mp4
-			quality = "192k"
+			quality = "160k"
 
 		} else if v.musicIndex == "251" {
 			//.webm
@@ -192,8 +192,14 @@ func (v *video) getMp3() {
 }
 
 func createMp3(quality string, fullName string, outputMp3Name string) error {
+	cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-ab", quality, "-ar", "48000", outputMp3Name)
 
-	cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-acodec", "mp3", "-ab", quality, "-ar", "44100", "-ac", "2", "-map", "a", outputMp3Name)
+	// args := append([]string{cmd.Path}, cmd.Args[1:]...)
+	// commandString := strings.Join(args, " ")
+
+	// fmt.Println("Command ffmpeg:", commandString)
+
+	// cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-acodec", "mp3", "-ab", quality, "-ar", "44100", "-ac", "2", "-map", "a", outputMp3Name)
 	out, errCO := cmd.CombinedOutput()
 
 	if errCO != nil {
@@ -241,10 +247,12 @@ func (v *video) downloadVideoIndexesFiles() {
 }
 
 func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
-	cmd := exec.Command("yt-dlp", "--newline", "-f", index, "-o", fullName, link)
+	// cmd := exec.Command("yt-dlp", "--no-check-certificate", "--newline", "-f", index, "-o", fullName, link)
+	cmd := exec.Command("yt-dlp", "--no-warnings", "--newline", "-f", index, "-o", fullName, link)
 
 	// create a pipe for the output of the script
 	cmdReader, err := cmd.StdoutPipe()
+
 	if err != nil {
 		v.setError("Command yt-dlp failed with: ", err)
 		fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for Cmd", err)
@@ -267,7 +275,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 	err = cmd.Start()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error starting Cmd", err)
-		v.setError("Command yt-dlp failed with: ", err)
+		v.setError("Command yt-dlp failed with after Start: ", err)
 		return err
 	}
 
@@ -275,7 +283,7 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 	if err != nil {
 		// TODO is it helpful to restart download here?
 		fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
-		v.setError("Command yt-dlp failed with: ", err)
+		v.setError("Command yt-dlp failed with after Wait: ", err)
 		return err
 	}
 
@@ -301,31 +309,42 @@ func (v *video) getBestQualityVideo(output string) (hasAudioSource bool, err err
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		if len(line) > 1 && strings.Contains(line, "(best)") {
-
+		if len(line) > 1 {
 			line = strings.TrimSpace(line)
 
-			if strings.HasPrefix(line, "22") {
+			if strings.HasPrefix(line, "18 ") {
+				// v.ytVideoOptions.musicIndex = "18" // contains also best audio
+				v.ytVideoOptions.videoIndex = "18"
+				v.videoExtension = getExtensionFromYtIndexLine(line)
+				// return true, nil
+			}
+
+			if strings.HasPrefix(line, "22 ") {
 				v.ytVideoOptions.musicIndex = "22" // contains also best audio
 				v.ytVideoOptions.videoIndex = "22"
 				v.videoExtension = getExtensionFromYtIndexLine(line)
 				return true, nil
 			}
 
-			if v.keepVideo {
-				splitedLine := strings.Split(line, " ")
-				videoIndex := strings.TrimSpace(splitedLine[0])
+			// if v.keepVideo {
+			// 	splitedLine := strings.Split(line, " ")
+			// 	videoIndex := strings.TrimSpace(splitedLine[0])
 
-				//fmt.Println("video best option: ", videoIndex, v.link)
-				v.ytVideoOptions.videoIndex = videoIndex
-				v.videoExtension = getExtensionFromYtIndexLine(line)
-				return false, nil
-			}
+			// 	//fmt.Println("video best option: ", videoIndex, v.link)
+			// 	v.ytVideoOptions.videoIndex = videoIndex
+			// 	v.videoExtension = getExtensionFromYtIndexLine(line)
+			// 	return false, nil
+			// }
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		v.setError("scanner getBestQualityVideo failed", err)
+		return false, err
+	}
+
+	if v.ytVideoOptions.videoIndex == "" {
+		v.setError("scanner getBestQualityVideo failed find video index", errors.New("no video index found"))
 		return false, err
 	}
 
@@ -344,19 +363,25 @@ func (v *video) getBestQualityAudio(output string) (err error) {
 
 			line = strings.TrimSpace(line)
 
-			if strings.HasPrefix(line, "251") {
+			if strings.HasPrefix(line, "251 ") {
 				v.ytVideoOptions.musicIndex = "251"
 
 				v.videoExtension = getExtensionFromYtIndexLine(line)
 				return nil
 			}
 
-			// TODO selection of formats
-			splitedLine := strings.Split(line, " ")
-			videoIndex := strings.TrimSpace(splitedLine[0])
+			if strings.HasPrefix(line, "251-1 ") {
+				v.ytVideoOptions.musicIndex = "251"
 
-			v.ytVideoOptions.musicIndex = videoIndex
-			v.videoExtension = getExtensionFromYtIndexLine(line)
+				v.videoExtension = getExtensionFromYtIndexLine(line)
+			}
+
+			// // TODO selection of formats
+			// splitedLine := strings.Split(line, " ")
+			// videoIndex := strings.TrimSpace(splitedLine[0])
+
+			// v.ytVideoOptions.musicIndex = videoIndex
+			// v.videoExtension = getExtensionFromYtIndexLine(line)
 			// fmt.Println("worst audio: ", videoIndex, v.link)
 
 			// do not return, get all options, and overwrite with the best
@@ -365,6 +390,10 @@ func (v *video) getBestQualityAudio(output string) (err error) {
 
 	if err := scanner.Err(); err != nil {
 		return err
+	}
+
+	if v.ytVideoOptions.musicIndex == "" {
+		return errors.New("no music index found")
 	}
 
 	return nil
@@ -379,7 +408,8 @@ func getExtensionFromYtIndexLine(line string) (extension string) {
 
 func loadVideoNames(v video) video {
 	if !v.hasError && v.videoName == "" {
-		cmd := exec.Command("yt-dlp", "-e", v.link)
+		cmd := exec.Command("yt-dlp", "--no-warnings", "-e", v.link)
+		// cmd := exec.Command("yt-dlp", "--no-check-certificate", "-e", v.link)
 
 		out, errCO := cmd.CombinedOutput()
 
@@ -388,6 +418,8 @@ func loadVideoNames(v video) video {
 		}
 
 		bufferOutput := string(out)
+
+		fmt.Println(bufferOutput)
 
 		bufferOutput = core.CleanCharactersFromString(bufferOutput)
 		v.videoName = bufferOutput
@@ -398,7 +430,8 @@ func loadVideoNames(v video) video {
 
 func loadVideoOptions(v video) video {
 	if !v.hasError {
-		cmd := exec.Command("yt-dlp", "--compat-options", "list-formats", "-F", v.link)
+		cmd := exec.Command("yt-dlp", "--no-warnings", "--compat-options", "list-formats", "-F", v.link)
+		// cmd := exec.Command("yt-dlp", "--no-check-certificate", "--compat-options", "list-formats", "-F", v.link)
 		out, errCO := cmd.CombinedOutput()
 
 		if errCO != nil {
@@ -406,16 +439,16 @@ func loadVideoOptions(v video) video {
 		}
 
 		bufferOutput := string(out)
-		hasAudioSource, errVideo := v.getBestQualityVideo(bufferOutput)
+		_, errVideo := v.getBestQualityVideo(bufferOutput)
 
 		if errVideo != nil {
 			v.setError("bestquality failed with", errVideo)
 		}
 
-		if v.createMp3 && !hasAudioSource {
+		if v.createMp3 {
 			errAudio := v.getBestQualityAudio(bufferOutput)
 
-			if errAudio != nil {
+			if errAudio != nil && v.ytVideoOptions.musicIndex == "" {
 				v.setError("audio get best quality failed with", errAudio)
 			}
 		}

@@ -7,6 +7,21 @@ import (
 
 // CleanCharactersFromString should remove characters not suitable for file names, or Mp3 device displays
 func CleanCharactersFromString(str string) (cleanedString string) {
+
+	// TODO
+	// + TODO write test
+
+	/*
+			func containsOnlyLatinCharacters(str string) bool {
+			for _, r := range str {
+				if r != ' ' && !unicode.Is(unicode.Latin, r) {
+					return false
+				}
+			}
+
+			return true
+		}
+	*/
 	cleanedString = cleanCharacters(str)
 
 	cleanedString = strings.ReplaceAll(cleanedString, " ", "_")

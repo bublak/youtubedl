@@ -5,81 +5,52 @@ import (
 	"unicode"
 )
 
-// CleanCharactersFromString should remove characters not suitable for file names, or Mp3 device displays
+// CleanCharactersFromString keeps only Czech alphabet characters, numbers, and word separators
 func CleanCharactersFromString(str string) (cleanedString string) {
-
-	// TODO
-	// + TODO write test
-
-	/*
-			func containsOnlyLatinCharacters(str string) bool {
-			for _, r := range str {
-				if r != ' ' && !unicode.Is(unicode.Latin, r) {
-					return false
-				}
-			}
-
-			return true
+	// Use a more efficient approach with unicode filtering
+	cleanedString = strings.Map(func(r rune) rune {
+		// Keep Czech alphabet (including diacritics)
+		if isCzechLetter(r) {
+			return r
 		}
-	*/
-	cleanedString = cleanCharacters(str)
+		// Keep numbers
+		if unicode.IsDigit(r) {
+			return r
+		}
+		// Keep word separators
+		if r == '_' || r == '-' {
+			return r
+		}
+		// Convert spaces and other characters to underscores
+		if unicode.IsSpace(r) || !unicode.IsPrint(r) {
+			return '_'
+		}
+		// Replace any other character with underscore
+		return '_'
+	}, str)
 
-	cleanedString = strings.ReplaceAll(cleanedString, " ", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "(", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, ")", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "[", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "&", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "%", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "*", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "!", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "|", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "]", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "/", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "`", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "@", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "#", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, ":", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "◆", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "'", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, ",", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "~", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "`", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "💀", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "\"", "_")
-	cleanedString = strings.ReplaceAll(cleanedString, "\\", "_")
-
+	// Clean up multiple consecutive underscores and trim
 	cleanedString = strings.ReplaceAll(cleanedString, "___", "_")
 	cleanedString = strings.ReplaceAll(cleanedString, "__", "_")
-	cleanedString = strings.TrimRight(cleanedString, "_")
-	cleanedString = strings.TrimLeft(cleanedString, "_")
+	cleanedString = strings.Trim(cleanedString, "_")
 
 	return cleanedString
 }
 
-func cleanCharacters(str string) string {
-	invisibleChars := str
-	//fmt.Printf("%q\n", invisibleChars)
-	//fmt.Println(len(invisibleChars))
+// isCzechLetter checks if a rune is a Czech alphabet letter (including diacritics)
+func isCzechLetter(r rune) bool {
+	// Basic Latin letters (a-z, A-Z)
+	if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+		return true
+	}
 
-	clean := strings.Map(func(r rune) rune {
-		if unicode.IsGraphic(r) {
-			return r
+	// Czech diacritical marks
+	czechDiacritics := "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ"
+	for _, czech := range czechDiacritics {
+		if r == czech {
+			return true
 		}
-		return -1
-	}, invisibleChars)
+	}
 
-	//fmt.Printf("%q\n", clean)
-	//fmt.Println(len(clean))
-
-	clean = strings.Map(func(r rune) rune {
-		if unicode.IsPrint(r) {
-			return r
-		}
-		return -1
-	}, invisibleChars)
-
-	//fmt.Printf("%q\n", clean)
-	//fmt.Println(len(clean))
-
-	return clean
+	return false
 }

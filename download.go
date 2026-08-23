@@ -2,7 +2,8 @@
 //
 //  Wrapper for yt-dlp. Can create also mp3 from list of youtube links.
 //  Usage: 1.) prepare list of youtube videos with requested output (video/ mp3) 2.) run
-//  Program is trying to obtain suitable quality, and then lowering, if better not existing.
+//  Format selection is delegated to yt-dlp: video as bestvideo+bestaudio merged to mp4,
+//  mp3 extracted from bestaudio via yt-dlp/ffmpeg.
 //
 //  OS: linux, macosx
 //  !keep yt-dlp updated
@@ -63,7 +64,7 @@ var listHTMLpagePath = "/Users/pavelfilipcik/mywork/codes/youtubedl/playlisthtml
 var listHTMLpagePathLoaded = "playlisthtml.txt_d"
 
 const (
-	numberOfProcesses = 4
+	numberOfProcesses = 1
 	root              = "root"
 	youtubeURL        = "https://youtube.com"
 	youtubeURLFull    = "https://www.youtube.com/"
@@ -83,11 +84,6 @@ var folders map[string]string
 
 var statusChannel chan video
 
-type ytVideoOptions struct {
-	musicIndex string
-	videoIndex string
-}
-
 type video struct {
 	counter            string
 	hasError           bool
@@ -102,7 +98,6 @@ type video struct {
 	videoAlbumPosition int
 	videoExtension     string
 	moveDir            string
-	ytVideoOptions
 }
 
 func (v *video) printMe() {
@@ -147,7 +142,7 @@ func (v *video) getAuthorName() string {
 }
 
 func (v *video) getFullName() string {
-	return v.getAlbumNamePosition() + v.getAuthorName() + v.videoName + "-" + v.videoIndex + "." + v.videoExtension
+	return v.getAlbumNamePosition() + v.getAuthorName() + v.videoName + "." + v.videoExtension
 }
 
 func (v *video) getFullMp3Name() string {
@@ -159,96 +154,66 @@ func (v *video) getMp3() {
 		return
 	}
 
-	var fullName = v.getFullName()
-	fmt.Printf("create mp3 %s.| %s+ \n\n", v.counter, fullName)
+	mp3Name := v.getFullMp3Name()
+	fmt.Printf("create mp3 %s.| %s+ \n\n", v.counter, mp3Name)
 
-	if !core.FileExists(fullName) {
-		v.setError("Create of mp3 file failed: missing video file to be converted to mp3.", nil)
+	if core.FileExists(mp3Name) {
 		return
 	}
 
-	if !core.FileExists(v.getFullMp3Name()) {
-		var quality string
+	// yt-dlp downloads best audio and converts it to mp3 via ffmpeg by itself;
+	// convert into temp name first, so interrupted run can not leave truncated mp3
+	// behind, which would be skipped as already existing on the next run
+	tempName := strings.TrimSuffix(mp3Name, ".mp3") + ".tmp.mp3"
+	outputTemplate := strings.TrimSuffix(tempName, ".mp3") + ".%(ext)s"
+	cmd := exec.Command("yt-dlp", "--no-warnings", "-f", "bestaudio/best",
+		"-x", "--audio-format", "mp3", "--audio-quality", "160K",
+		"-o", outputTemplate, v.link)
 
-		if v.musicIndex == "22" {
-			//.mp4
-			quality = "160k"
-
-		} else if v.musicIndex == "251" {
-			//.webm
-			quality = "160k"
-		} else {
-			v.setError("Create of mp3 file failed: missing part for quality of result mp3, definition of index", nil)
-			return
-		}
-
-		errCreateMp3 := createMp3(quality, fullName, v.getFullMp3Name())
-
-		if errCreateMp3 != nil {
-			v.setError("Create of mp3 file failed: ffmpeg convert.", errCreateMp3)
-			return
-		}
-	}
-}
-
-func createMp3(quality string, fullName string, outputMp3Name string) error {
-	cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-ab", quality, "-ar", "48000", outputMp3Name)
-
-	// args := append([]string{cmd.Path}, cmd.Args[1:]...)
-	// commandString := strings.Join(args, " ")
-
-	// fmt.Println("Command ffmpeg:", commandString)
-
-	// cmd := exec.Command("ffmpeg", "-i", fullName, "-vn", "-acodec", "mp3", "-ab", quality, "-ar", "44100", "-ac", "2", "-map", "a", outputMp3Name)
 	out, errCO := cmd.CombinedOutput()
 
 	if errCO != nil {
-		return errCO
+		v.setError(fmt.Sprintf("Create of mp3 file failed: yt-dlp audio extract, output: %s ", string(out)), errCO)
+		return
 	}
 
-	if !core.FileExists(outputMp3Name) {
-		outp := string(out)
+	if !core.FileExists(tempName) {
 		// should not happen, maybe full disk?
-		errMsg := fmt.Sprintf("Mp3 file was not created: %s, fullName: %s, vidoname: %s \n output: %s \n", quality, fullName, outputMp3Name, outp)
-
-		return errors.New(errMsg)
+		v.setError(fmt.Sprintf("Mp3 file was not created: %s \n output: %s \n", tempName, string(out)), nil)
+		return
 	}
 
-	return nil
+	if errRename := os.Rename(tempName, mp3Name); errRename != nil {
+		v.setError("Create of mp3 file failed: rename of temp mp3 file.", errRename)
+	}
 }
 
 func (v *video) downloadVideoIndexesFiles() {
+	if !v.keepVideo {
+		// mp3-only entries download audio directly in getMp3, no video file needed
+		return
+	}
+
 	videoFullName := v.getFullName()
 
 	fmt.Printf("\nStarted download of %s.| %s (%s)\n", v.counter, videoFullName, v.link)
 
-	var downloadErrorVideoIndex error
-	var downloadErrorMusicIndex error
+	downloadError := v.runExternalDownloadCommand("bv*+ba/b", videoFullName, v.link)
 
-	if v.ytVideoOptions.videoIndex != "" {
-		downloadErrorVideoIndex = v.runExternalDownloadCommand(v.ytVideoOptions.videoIndex, videoFullName, v.link)
-	}
-
-	if downloadErrorVideoIndex != nil {
-		fmt.Printf("\n Error download of videoIndex %s.| %s (%s)!\n", v.counter, videoFullName, v.link)
-	}
-
-	if v.createMp3 && v.ytVideoOptions.videoIndex != v.ytVideoOptions.musicIndex {
-		downloadErrorMusicIndex = v.runExternalDownloadCommand(v.ytVideoOptions.musicIndex, videoFullName, v.link)
-	}
-
-	if downloadErrorMusicIndex != nil {
-		fmt.Printf("\n  Error download of musicIndex %s.| %s (%s)!\n", v.counter, videoFullName, v.link)
-	}
-
-	if downloadErrorMusicIndex == nil && downloadErrorVideoIndex == nil {
+	if downloadError != nil {
+		fmt.Printf("\n Error download of video %s.| %s (%s)!\n", v.counter, videoFullName, v.link)
+	} else {
 		fmt.Printf("\nFinished download of %s.| %s (%s)\n", v.counter, videoFullName, v.link)
 	}
 }
 
-func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
-	// cmd := exec.Command("yt-dlp", "--no-check-certificate", "--newline", "-f", index, "-o", fullName, link)
-	cmd := exec.Command("yt-dlp", "--no-warnings", "--newline", "-f", index, "-o", fullName, link)
+func (v *video) runExternalDownloadCommand(formatSelector, fullName, link string) error {
+	cmd := exec.Command("yt-dlp", "--no-warnings", "--newline", "-f", formatSelector,
+		"--merge-output-format", "mp4", "-o", fullName, link)
+
+	// collect stderr, so real error reason from yt-dlp is visible in the report
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
 
 	// create a pipe for the output of the script
 	cmdReader, err := cmd.StdoutPipe()
@@ -283,127 +248,12 @@ func (v *video) runExternalDownloadCommand(index, fullName, link string) error {
 	if err != nil {
 		// TODO is it helpful to restart download here?
 		fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
-		v.setError("Command yt-dlp failed with after Wait: ", err)
+		fmt.Fprintln(os.Stderr, stderrBuf.String())
+		v.setError("Command yt-dlp failed with after Wait: "+stderrBuf.String(), err)
 		return err
 	}
 
 	return nil
-}
-
-func (v *video) removeVideo() {
-	if !v.hasError && !v.keepVideo {
-		fullName := v.getFullName()
-		fmt.Println("Delete video: ", fullName)
-		removeErr := os.Remove(fullName)
-		if removeErr != nil {
-			v.setError("Delete video file failed.", removeErr)
-		}
-	}
-}
-
-func (v *video) getBestQualityVideo(output string) (hasAudioSource bool, err error) {
-
-	stringsReader := strings.NewReader(output)
-	scanner := bufio.NewScanner(stringsReader)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if len(line) > 1 {
-			line = strings.TrimSpace(line)
-
-			if strings.HasPrefix(line, "18 ") {
-				// v.ytVideoOptions.musicIndex = "18" // contains also best audio
-				v.ytVideoOptions.videoIndex = "18"
-				v.videoExtension = getExtensionFromYtIndexLine(line)
-				// return true, nil
-			}
-
-			if strings.HasPrefix(line, "22 ") {
-				v.ytVideoOptions.musicIndex = "22" // contains also best audio
-				v.ytVideoOptions.videoIndex = "22"
-				v.videoExtension = getExtensionFromYtIndexLine(line)
-				return true, nil
-			}
-
-			// if v.keepVideo {
-			// 	splitedLine := strings.Split(line, " ")
-			// 	videoIndex := strings.TrimSpace(splitedLine[0])
-
-			// 	//fmt.Println("video best option: ", videoIndex, v.link)
-			// 	v.ytVideoOptions.videoIndex = videoIndex
-			// 	v.videoExtension = getExtensionFromYtIndexLine(line)
-			// 	return false, nil
-			// }
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		v.setError("scanner getBestQualityVideo failed", err)
-		return false, err
-	}
-
-	if v.ytVideoOptions.videoIndex == "" {
-		v.setError("scanner getBestQualityVideo failed find video index", errors.New("no video index found"))
-		return false, err
-	}
-
-	return false, nil
-}
-
-func (v *video) getBestQualityAudio(output string) (err error) {
-	// options 251, 140
-	stringsReader := strings.NewReader(output)
-	scanner := bufio.NewScanner(stringsReader)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if len(line) > 1 && strings.Contains(line, "audio only") {
-
-			line = strings.TrimSpace(line)
-
-			if strings.HasPrefix(line, "251 ") {
-				v.ytVideoOptions.musicIndex = "251"
-
-				v.videoExtension = getExtensionFromYtIndexLine(line)
-				return nil
-			}
-
-			if strings.HasPrefix(line, "251-1 ") {
-				v.ytVideoOptions.musicIndex = "251"
-
-				v.videoExtension = getExtensionFromYtIndexLine(line)
-			}
-
-			// // TODO selection of formats
-			// splitedLine := strings.Split(line, " ")
-			// videoIndex := strings.TrimSpace(splitedLine[0])
-
-			// v.ytVideoOptions.musicIndex = videoIndex
-			// v.videoExtension = getExtensionFromYtIndexLine(line)
-			// fmt.Println("worst audio: ", videoIndex, v.link)
-
-			// do not return, get all options, and overwrite with the best
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-
-	if v.ytVideoOptions.musicIndex == "" {
-		return errors.New("no music index found")
-	}
-
-	return nil
-}
-
-func getExtensionFromYtIndexLine(line string) (extension string) {
-	splitedLine := strings.Fields(line)
-	extension = strings.TrimSpace(splitedLine[1])
-
-	return extension
 }
 
 func loadVideoNames(v video) video {
@@ -429,30 +279,9 @@ func loadVideoNames(v video) video {
 }
 
 func loadVideoOptions(v video) video {
-	if !v.hasError {
-		cmd := exec.Command("yt-dlp", "--no-warnings", "--compat-options", "list-formats", "-F", v.link)
-		// cmd := exec.Command("yt-dlp", "--no-check-certificate", "--compat-options", "list-formats", "-F", v.link)
-		out, errCO := cmd.CombinedOutput()
-
-		if errCO != nil {
-			v.setError("get video index failed	", errCO)
-		}
-
-		bufferOutput := string(out)
-		_, errVideo := v.getBestQualityVideo(bufferOutput)
-
-		if errVideo != nil {
-			v.setError("bestquality failed with", errVideo)
-		}
-
-		if v.createMp3 {
-			errAudio := v.getBestQualityAudio(bufferOutput)
-
-			if errAudio != nil && v.ytVideoOptions.musicIndex == "" {
-				v.setError("audio get best quality failed with", errAudio)
-			}
-		}
-	}
+	// format selection is left to yt-dlp itself (bv*+ba/b merged into mp4),
+	// old fixed format indexes 18/22 are no longer offered by youtube
+	v.videoExtension = "mp4"
 
 	return v
 }
@@ -482,6 +311,7 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, statusChannel
 	defer wg.Done()
 
 	for v := range videoChannel {
+		time.Sleep(time.Duration(5 * time.Second))
 		processVideosCounter.increment()
 
 		v.counter = processVideosCounter.getValueAsString()
@@ -494,7 +324,6 @@ func processVideoList(wg *sync.WaitGroup, videoChannel chan video, statusChannel
 				v.getMp3()
 
 				if !v.hasError {
-					v.removeVideo()
 					v.moveFile()
 					fmt.Printf("  Success:  %s/%d: %s | %s\n\n", v.counter, allVideosCount, v.videoName, v.link)
 				}
@@ -884,6 +713,7 @@ func doWork(videoList []video) {
 		v := loadVideoOptions(videoList[index])
 		v = loadVideoNames(v)
 		videoChannel <- v
+		time.Sleep(time.Duration(3 * time.Second))
 	}
 
 	close(videoChannel)
@@ -892,6 +722,52 @@ func doWork(videoList []video) {
 	close(statusChannel)
 	wgError.Wait()
 
+}
+
+// extractHTMLTitleAttr extracts the value of the title="..." attribute from an HTML line.
+func extractHTMLTitleAttr(line string) string {
+	const prefix = `title="`
+	idx := strings.Index(line, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := line[idx+len(prefix):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		return ""
+	}
+	return rest[:end]
+}
+
+// extractAuthorFromVideoTitle tries to parse an artist/author name from a YouTube video title.
+// Handles patterns:
+//   - "Author - Song Name"           → returns "Author"
+//   - "21. Song by Author | Extra"   → returns "Author"
+func extractAuthorFromVideoTitle(title string) string {
+	title = strings.ReplaceAll(title, "&amp;", "&")
+	title = strings.ReplaceAll(title, "&nbsp;", " ")
+	title = strings.TrimSpace(title)
+
+	if title == "" {
+		return ""
+	}
+
+	// "Author - Song" pattern
+	if idx := strings.Index(title, " - "); idx > 0 {
+		return strings.TrimSpace(title[:idx])
+	}
+
+	// "Song by Author | Extra" pattern
+	lowerTitle := strings.ToLower(title)
+	if byIdx := strings.Index(lowerTitle, " by "); byIdx >= 0 {
+		after := title[byIdx+4:]
+		if pipeIdx := strings.Index(after, " | "); pipeIdx >= 0 {
+			return strings.TrimSpace(after[:pipeIdx])
+		}
+		return strings.TrimSpace(after)
+	}
+
+	return ""
 }
 
 func parseListHTML(fileName string, videoList []video) ([]video, error) {
@@ -916,6 +792,8 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 	var counter int = 0
 	var albumPosition int = 1
 	var isChange = false
+	var lastVideoIdx int = -1
+	var lookingForChannelName bool = false
 
 	for scanner.Scan() {
 		counter++
@@ -926,6 +804,8 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 			albumPosition = 1
 			authorName = ""
 			outputFolder = ""
+			lastVideoIdx = -1
+			lookingForChannelName = false
 
 			continue
 		}
@@ -949,7 +829,21 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 			authorName = core.CleanCharactersFromString(authorName)
 		}
 
-		if len(line) > 1 && strings.Contains(line, "yt-simple-endpoint") {
+		// Channel name appears a few lines after the video-title line; backfill author if needed.
+		if lookingForChannelName && strings.Contains(line, "id=\"text\"") && strings.Contains(line, "ytd-channel-name") {
+			channelName := extractHTMLTitleAttr(line)
+			// YouTube auto-generated artist channels append " - Topic"; strip it.
+			channelName = strings.TrimSuffix(channelName, " - Topic")
+			channelName = strings.TrimSpace(channelName)
+			if channelName != "" && lastVideoIdx >= 0 {
+				videoList[lastVideoIdx].authorName = core.CleanCharactersFromString(channelName)
+			}
+			lookingForChannelName = false
+		}
+
+		if len(line) > 1 && strings.Contains(line, "yt-simple-endpoint") && strings.Contains(line, "id=\"video-title\"") {
+			lookingForChannelName = false // reset any pending state from previous entry
+
 			if strings.Contains(line, "href") {
 				pos := strings.Index(line, "href=\""+listURLPart)
 
@@ -976,12 +870,21 @@ func parseListHTML(fileName string, videoList []video) ([]video, error) {
 						}
 					}
 
+					effectiveAuthor := authorName
+					if effectiveAuthor == "" {
+						titleAttr := extractHTMLTitleAttr(line)
+						effectiveAuthor = core.CleanCharactersFromString(extractAuthorFromVideoTitle(titleAttr))
+					}
+
 					v.videoAlbumPosition = albumPosition
-					v.authorName = authorName
+					v.authorName = effectiveAuthor
 					videoList, isChange = appendIfMissing(videoList, v)
 
 					if isChange {
 						albumPosition++
+						lastVideoIdx = len(videoList) - 1
+						// If author still empty, look for channel name on upcoming lines.
+						lookingForChannelName = (effectiveAuthor == "")
 					}
 				}
 			}

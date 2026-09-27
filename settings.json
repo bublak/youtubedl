@@ -1,6 +1,8 @@
 {
-  "root": "/Users/someUser/youtubed",
+  "root": "/Users/pavelfilipcik/fun",
   "typeMusic": "mp3",
   "typeVideo": "video",
-  "listHTMLFolder": "blues"
+  "listFileNamePath": "list.txt",
+  "listHTMLpagePath": "playlisthtml.txt",
+  "listHTMLpagePathLoaded": "playlisthtml.txt_d"
 }

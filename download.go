@@ -33,9 +33,9 @@
 // == Build & run ==
 //  go build; ./youtube
 //
-//  @requrired yt-dlp, ffmpeg, and for build golang 1.22
+//  @requrired yt-dlp, ffmpeg, and for build golang 1.27
 //  @author    Pavel Filipcik
-//  @year      2017-2024
+//  @year      2017-2026
 
 package main
 
@@ -44,11 +44,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,28 +57,31 @@ import (
 	"youtube/codes/core"
 )
 
-var listFileNamePath = "list.txt"
+var listFileNamePath string
 
 const listHTMLAlbumSeparator = "**startnew**"
 
-var listHTMLpagePath = "/Users/pavelfilipcik/mywork/codes/youtubedl/playlisthtml.txt"
-var listHTMLpagePathLoaded = "playlisthtml.txt_d"
+var listHTMLpagePath string
+var listHTMLpagePathLoaded string
 
 const (
-	numberOfProcesses = 1
-	root              = "root"
-	youtubeURL        = "https://youtube.com"
-	youtubeURLFull    = "https://www.youtube.com/"
-	listHTMLFolder    = "listHTMLFolder"
-	typeMusic         = "typeMusic"
-	typeVideo         = "typeVideo"
-	typeMusicShort    = "m"
-	typeMusicLong     = "mp3"
-	typeVideoShort    = "v"
-	typeVideoLong     = "video"
-	typeBoth          = "both"
-	typeBothShort     = "b"
-	listURLPart       = "/watch?v="
+	numberOfProcesses         = 1
+	root                      = "root"
+	youtubeURL                = "https://youtube.com"
+	youtubeURLFull            = "https://www.youtube.com/"
+	listHTMLFolder            = "listHTMLFolder"
+	typeMusic                 = "typeMusic"
+	typeVideo                 = "typeVideo"
+	typeMusicShort            = "m"
+	typeMusicLong             = "mp3"
+	typeVideoShort            = "v"
+	typeVideoLong             = "video"
+	typeBoth                  = "both"
+	typeBothShort             = "b"
+	listURLPart               = "/watch?v="
+	listFileNamePathKey       = "listFileNamePath"
+	listHTMLpagePathKey       = "listHTMLpagePath"
+	listHTMLpagePathLoadedKey = "listHTMLpagePathLoaded"
 )
 
 var folders map[string]string
@@ -556,6 +560,14 @@ func checkOrCreateFolder(folderIn string) (folderOut string, err error) {
 	return folderIn, nil
 }
 
+func popSetting(m map[string]string, key, defaultVal string) string {
+	if val, ok := m[key]; ok {
+		delete(m, key)
+		return val
+	}
+	return defaultVal
+}
+
 func loadSettings() {
 	settingsFile, err := os.Open("settings.json")
 	if err != nil {
@@ -564,7 +576,12 @@ func loadSettings() {
 	}
 	defer settingsFile.Close()
 
-	byteValue, _ := ioutil.ReadAll(settingsFile)
+	byteValue, err := io.ReadAll(settingsFile)
+	if err != nil {
+		core.LogError(err, "error while reading settings.json file")
+		os.Exit(1)
+	}
+
 	errUn := json.Unmarshal(byteValue, &folders)
 
 	if errUn != nil {
@@ -575,6 +592,16 @@ func loadSettings() {
 		core.LogError(nil, "please add 'root' declaration in file settings.json")
 		os.Exit(1)
 	}
+
+	listFileNamePath = popSetting(folders, listFileNamePathKey, "list.txt")
+	listHTMLpagePathLoaded = popSetting(folders, listHTMLpagePathLoadedKey, "playlisthtml.txt_d")
+
+	execDir, errExec := os.Executable()
+	if errExec != nil {
+		core.LogError(errExec, "can not resolve directory of running binary")
+		os.Exit(1)
+	}
+	listHTMLpagePath = filepath.Join(filepath.Dir(execDir), popSetting(folders, listHTMLpagePathKey, "playlisthtml.txt"))
 
 	for key, val := range folders {
 		folders[key], err = checkOrCreateFolder(val)
